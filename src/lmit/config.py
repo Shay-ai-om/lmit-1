@@ -1,0 +1,486 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Any
+import tomllib
+
+
+DEFAULT_SUPPORTED_EXTS = {
+    ".md",
+    ".markdown",
+    ".txt",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".xls",
+    ".html",
+    ".htm",
+    ".csv",
+    ".json",
+    ".xml",
+    ".jpg",
+    ".jpeg",
+    ".png",
+}
+
+DEFAULT_EXCLUDE_GLOBS = [
+    ".git/**",
+    ".venv/**",
+    "output/**",
+    ".lmit_work/**",
+    "sessions/**",
+    "__pycache__/**",
+    "*.zip",
+    "*.7z",
+    "*.rar",
+    "*.key",
+    "*.pem",
+    "*.p12",
+    "*.pfx",
+    "*key*.json",
+    "*credential*.json",
+    "*secret*",
+    "*token*",
+    ".env",
+]
+
+
+@dataclass(frozen=True)
+class PathsConfig:
+    input_dirs: tuple[Path, ...]
+    output_dir: Path
+    work_dir: Path
+    report_dir: Path
+    session_dir: Path
+
+    @property
+    def input_dir(self) -> Path:
+        return self.input_dirs[0]
+
+
+@dataclass(frozen=True)
+class ScanConfig:
+    recursive: bool
+    supported_exts: set[str]
+    exclude_globs: list[str]
+
+
+@dataclass(frozen=True)
+class ConversionConfig:
+    enable_markitdown_plugins: bool
+    fetch_urls: bool
+    overwrite: bool
+    skip_unchanged: bool
+    blank_note_for_images: bool
+    only_patterns: tuple[str, ...] = ()
+    retry_failed: bool = False
+
+
+@dataclass(frozen=True)
+class PollingConfig:
+    enabled: bool
+    interval_seconds: int
+    stable_seconds: int
+
+
+@dataclass(frozen=True)
+class OutputNamingConfig:
+    enrich_filenames: bool
+    prefix_source: str
+    max_prefix_chars: int
+    separator: str
+
+
+@dataclass(frozen=True)
+class WikiConfig:
+    root_dir: Path
+    raw_dir: Path
+    sources_dir: Path
+    topics_dir: Path
+    entities_dir: Path
+    queries_dir: Path
+    schema_dir: Path
+    log_path: Path
+    index_path: Path
+
+
+@dataclass(frozen=True)
+class WikiIngestConfig:
+    source_dirs: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class WikiRuntimeConfig:
+    settings_path: Path
+    state_path: Path
+    auto_sync_on_ingest: bool
+    search_limit: int
+    serve_host: str
+    serve_port: int
+
+
+@dataclass(frozen=True)
+class SessionSiteConfig:
+    name: str
+    domains: list[str]
+    login_url: str
+    state_file: Path
+    headless: bool
+    wait_ms: int
+    render_mode: str = "desktop"
+    navigation_timeout_ms: int = 90000
+    retry_count: int = 2
+    retry_backoff_ms: int = 1500
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    paths: PathsConfig
+    scan: ScanConfig
+    conversion: ConversionConfig
+    polling: PollingConfig
+    output_naming: OutputNamingConfig
+    wiki: WikiConfig
+    wiki_ingest: WikiIngestConfig
+    wiki_runtime: WikiRuntimeConfig
+    sessions: list[SessionSiteConfig]
+
+
+def default_config(cwd: Path | None = None) -> AppConfig:
+    base = (cwd or Path.cwd()).resolve()
+    wiki_root = base / "knowledge_base"
+    return AppConfig(
+        paths=PathsConfig(
+            input_dirs=(base / "input",),
+            output_dir=base / "output" / "raw",
+            work_dir=base / ".lmit_work",
+            report_dir=base / "output" / "reports",
+            session_dir=base / "sessions",
+        ),
+        scan=ScanConfig(
+            recursive=True,
+            supported_exts=set(DEFAULT_SUPPORTED_EXTS),
+            exclude_globs=list(DEFAULT_EXCLUDE_GLOBS),
+        ),
+        conversion=ConversionConfig(
+            enable_markitdown_plugins=True,
+            fetch_urls=True,
+            overwrite=False,
+            skip_unchanged=True,
+            blank_note_for_images=True,
+            only_patterns=(),
+            retry_failed=False,
+        ),
+        polling=PollingConfig(enabled=False, interval_seconds=300, stable_seconds=10),
+        output_naming=OutputNamingConfig(
+            enrich_filenames=False,
+            prefix_source="auto",
+            max_prefix_chars=64,
+            separator="__",
+        ),
+        wiki=WikiConfig(
+            root_dir=wiki_root,
+            raw_dir=wiki_root / "raw",
+            sources_dir=wiki_root / "wiki" / "sources",
+            topics_dir=wiki_root / "wiki" / "topics",
+            entities_dir=wiki_root / "wiki" / "entities",
+            queries_dir=wiki_root / "wiki" / "queries",
+            schema_dir=wiki_root / "schema",
+            log_path=wiki_root / "wiki" / "log.md",
+            index_path=wiki_root / "wiki" / "index.md",
+        ),
+        wiki_ingest=WikiIngestConfig(
+            source_dirs=(base / "output" / "raw",),
+        ),
+        wiki_runtime=WikiRuntimeConfig(
+            settings_path=wiki_root / ".wiki_runtime.json",
+            state_path=wiki_root / ".wiki_state.json",
+            auto_sync_on_ingest=False,
+            search_limit=8,
+            serve_host="127.0.0.1",
+            serve_port=8765,
+        ),
+        sessions=[
+            SessionSiteConfig(
+                name="facebook",
+                domains=[
+                    "facebook.com",
+                    "www.facebook.com",
+                    "m.facebook.com",
+                    "mbasic.facebook.com",
+                ],
+                login_url="https://www.facebook.com/login",
+                state_file=base / "sessions" / "facebook_state.json",
+                headless=True,
+                wait_ms=8000,
+                render_mode="desktop",
+                navigation_timeout_ms=90000,
+                retry_count=2,
+                retry_backoff_ms=1500,
+            )
+        ],
+    )
+
+
+def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
+    cfg = default_config(cwd=cwd)
+    if path is None:
+        return cfg
+
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    base = (cwd or Path.cwd()).resolve()
+
+    paths_data = data.get("paths", {})
+    input_dirs_value = paths_data.get("input_dirs")
+    if input_dirs_value is None:
+        input_dirs_value = paths_data.get("input_dir")
+    paths = PathsConfig(
+        input_dirs=_resolve_paths(input_dirs_value, cfg.paths.input_dirs, base),
+        output_dir=_resolve_path(paths_data.get("output_dir"), cfg.paths.output_dir, base),
+        work_dir=_resolve_path(paths_data.get("work_dir"), cfg.paths.work_dir, base),
+        report_dir=_resolve_path(paths_data.get("report_dir"), cfg.paths.report_dir, base),
+        session_dir=_resolve_path(paths_data.get("session_dir"), cfg.paths.session_dir, base),
+    )
+
+    scan_data = data.get("scan", {})
+    scan = ScanConfig(
+        recursive=bool(scan_data.get("recursive", cfg.scan.recursive)),
+        supported_exts=_normalize_exts(scan_data.get("supported_exts", cfg.scan.supported_exts)),
+        exclude_globs=list(scan_data.get("exclude_globs", cfg.scan.exclude_globs)),
+    )
+
+    conversion_data = data.get("conversion", {})
+    conversion = ConversionConfig(
+        enable_markitdown_plugins=bool(
+            conversion_data.get(
+                "enable_markitdown_plugins", cfg.conversion.enable_markitdown_plugins
+            )
+        ),
+        fetch_urls=bool(conversion_data.get("fetch_urls", cfg.conversion.fetch_urls)),
+        overwrite=bool(conversion_data.get("overwrite", cfg.conversion.overwrite)),
+        skip_unchanged=bool(
+            conversion_data.get("skip_unchanged", cfg.conversion.skip_unchanged)
+        ),
+        blank_note_for_images=bool(
+            conversion_data.get(
+                "blank_note_for_images", cfg.conversion.blank_note_for_images
+            )
+        ),
+        only_patterns=tuple(
+            str(item) for item in conversion_data.get("only_patterns", cfg.conversion.only_patterns)
+        ),
+        retry_failed=bool(conversion_data.get("retry_failed", cfg.conversion.retry_failed)),
+    )
+
+    polling_data = data.get("polling", {})
+    polling = PollingConfig(
+        enabled=bool(polling_data.get("enabled", cfg.polling.enabled)),
+        interval_seconds=int(
+            polling_data.get("interval_seconds", cfg.polling.interval_seconds)
+        ),
+        stable_seconds=int(polling_data.get("stable_seconds", cfg.polling.stable_seconds)),
+    )
+
+    output_naming_data = data.get("output_naming", {})
+    output_naming = OutputNamingConfig(
+        enrich_filenames=bool(
+            output_naming_data.get(
+                "enrich_filenames",
+                cfg.output_naming.enrich_filenames,
+            )
+        ),
+        prefix_source=str(
+            output_naming_data.get("prefix_source", cfg.output_naming.prefix_source)
+        ),
+        max_prefix_chars=int(
+            output_naming_data.get(
+                "max_prefix_chars",
+                cfg.output_naming.max_prefix_chars,
+            )
+        ),
+        separator=str(output_naming_data.get("separator", cfg.output_naming.separator)),
+    )
+
+    wiki_data = data.get("wiki", {})
+    wiki_root = _resolve_path(wiki_data.get("root_dir"), cfg.wiki.root_dir, base)
+    wiki = WikiConfig(
+        root_dir=wiki_root,
+        raw_dir=_resolve_path(wiki_data.get("raw_dir"), wiki_root / "raw", base),
+        sources_dir=_resolve_path(
+            wiki_data.get("sources_dir"), wiki_root / "wiki" / "sources", base
+        ),
+        topics_dir=_resolve_path(
+            wiki_data.get("topics_dir"), wiki_root / "wiki" / "topics", base
+        ),
+        entities_dir=_resolve_path(
+            wiki_data.get("entities_dir"), wiki_root / "wiki" / "entities", base
+        ),
+        queries_dir=_resolve_path(
+            wiki_data.get("queries_dir"), wiki_root / "wiki" / "queries", base
+        ),
+        schema_dir=_resolve_path(wiki_data.get("schema_dir"), wiki_root / "schema", base),
+        log_path=_resolve_path(wiki_data.get("log_path"), wiki_root / "wiki" / "log.md", base),
+        index_path=_resolve_path(
+            wiki_data.get("index_path"), wiki_root / "wiki" / "index.md", base
+        ),
+    )
+
+    wiki_ingest_data = data.get("wiki_ingest", {})
+    wiki_ingest = WikiIngestConfig(
+        source_dirs=_resolve_paths(
+            wiki_ingest_data.get("source_dirs"),
+            cfg.wiki_ingest.source_dirs,
+            base,
+        ),
+    )
+
+    wiki_runtime_data = data.get("wiki_runtime", {})
+    wiki_runtime = WikiRuntimeConfig(
+        settings_path=_resolve_path(
+            wiki_runtime_data.get("settings_path"),
+            cfg.wiki_runtime.settings_path,
+            base,
+        ),
+        state_path=_resolve_path(
+            wiki_runtime_data.get("state_path"),
+            cfg.wiki_runtime.state_path,
+            base,
+        ),
+        auto_sync_on_ingest=bool(
+            wiki_runtime_data.get(
+                "auto_sync_on_ingest",
+                cfg.wiki_runtime.auto_sync_on_ingest,
+            )
+        ),
+        search_limit=int(
+            wiki_runtime_data.get("search_limit", cfg.wiki_runtime.search_limit)
+        ),
+        serve_host=str(
+            wiki_runtime_data.get("serve_host", cfg.wiki_runtime.serve_host)
+        ),
+        serve_port=int(
+            wiki_runtime_data.get("serve_port", cfg.wiki_runtime.serve_port)
+        ),
+    )
+
+    sessions = [
+        _load_session_site(item, paths.session_dir, base) for item in data.get("sessions", [])
+    ]
+    if not sessions:
+        sessions = cfg.sessions
+
+    return AppConfig(
+        paths=paths,
+        scan=scan,
+        conversion=conversion,
+        polling=polling,
+        output_naming=output_naming,
+        wiki=wiki,
+        wiki_ingest=wiki_ingest,
+        wiki_runtime=wiki_runtime,
+        sessions=sessions,
+    )
+
+
+def with_overrides(
+    cfg: AppConfig,
+    *,
+    input_dir: str | None = None,
+    input_dirs: Sequence[str] | None = None,
+    output_dir: str | None = None,
+    work_dir: str | None = None,
+    fetch_urls: bool | None = None,
+    overwrite: bool | None = None,
+    skip_unchanged: bool | None = None,
+    enrich_filenames: bool | None = None,
+    only_patterns: Sequence[str] | None = None,
+    retry_failed: bool | None = None,
+    cwd: Path | None = None,
+) -> AppConfig:
+    base = (cwd or Path.cwd()).resolve()
+    paths = cfg.paths
+    if input_dirs is not None:
+        paths = replace(paths, input_dirs=_resolve_paths(input_dirs, paths.input_dirs, base))
+    elif input_dir is not None:
+        paths = replace(paths, input_dirs=_resolve_paths(input_dir, paths.input_dirs, base))
+    if output_dir is not None:
+        paths = replace(paths, output_dir=_resolve_path(output_dir, paths.output_dir, base))
+    if work_dir is not None:
+        paths = replace(paths, work_dir=_resolve_path(work_dir, paths.work_dir, base))
+
+    conversion = cfg.conversion
+    if fetch_urls is not None:
+        conversion = replace(conversion, fetch_urls=fetch_urls)
+    if overwrite is not None:
+        conversion = replace(conversion, overwrite=overwrite)
+    if skip_unchanged is not None:
+        conversion = replace(conversion, skip_unchanged=skip_unchanged)
+    if only_patterns is not None:
+        conversion = replace(conversion, only_patterns=tuple(only_patterns))
+    if retry_failed is not None:
+        conversion = replace(conversion, retry_failed=retry_failed)
+
+    output_naming = cfg.output_naming
+    if enrich_filenames is not None:
+        output_naming = replace(output_naming, enrich_filenames=enrich_filenames)
+
+    return replace(cfg, paths=paths, conversion=conversion, output_naming=output_naming)
+
+
+def _load_session_site(
+    data: dict[str, Any], session_dir: Path, base: Path
+) -> SessionSiteConfig:
+    name = str(data["name"])
+    default_state = session_dir / f"{name}_state.json"
+    return SessionSiteConfig(
+        name=name,
+        domains=[str(item).lower() for item in data.get("domains", [])],
+        login_url=str(data["login_url"]),
+        state_file=_resolve_path(data.get("state_file"), default_state, base),
+        headless=bool(data.get("headless", True)),
+        wait_ms=int(data.get("wait_ms", 8000)),
+        render_mode=str(data.get("render_mode", "desktop")).lower(),
+        navigation_timeout_ms=int(data.get("navigation_timeout_ms", 90000)),
+        retry_count=int(data.get("retry_count", 2)),
+        retry_backoff_ms=int(data.get("retry_backoff_ms", 1500)),
+    )
+
+
+def _resolve_path(value: str | None, default: Path, base: Path) -> Path:
+    if value is None:
+        return default.resolve()
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = base / path
+    return path.resolve()
+
+
+def _resolve_paths(value: Any, default: tuple[Path, ...], base: Path) -> tuple[Path, ...]:
+    if value is None:
+        return tuple(path.resolve() for path in default)
+    if isinstance(value, (str, Path)):
+        raw_items = [value]
+    else:
+        raw_items = list(value)
+
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for item in raw_items:
+        resolved = _resolve_path(str(item), base / "input", base)
+        if resolved in seen:
+            continue
+        paths.append(resolved)
+        seen.add(resolved)
+    if not paths:
+        raise ValueError("at least one input directory must be configured")
+    return tuple(paths)
+
+
+def _normalize_exts(items: Any) -> set[str]:
+    return {
+        str(item).lower() if str(item).startswith(".") else f".{item}".lower()
+        for item in items
+    }

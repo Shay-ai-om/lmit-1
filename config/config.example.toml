@@ -1,0 +1,131 @@
+[paths]
+# Keep legacy single-root config working:
+input_dir = "input"
+
+# For multiple input roots, prefer input_dirs. The CLI also supports repeated
+# --input arguments. When multiple roots are configured, converted files are
+# written under output/raw/<input-root-label>/... to avoid filename collisions.
+# input_dirs = [
+#   "input",
+#   "input_extra",
+# ]
+output_dir = "output/raw"
+work_dir = ".lmit_work"
+report_dir = "output/reports"
+session_dir = "sessions"
+
+[scan]
+recursive = true
+supported_exts = [
+  ".md",
+  ".markdown",
+  ".txt",
+  ".pdf",
+  ".docx",
+  ".pptx",
+  ".xlsx",
+  ".xls",
+  ".html",
+  ".htm",
+  ".csv",
+  ".json",
+  ".xml",
+  ".jpg",
+  ".jpeg",
+  ".png",
+]
+exclude_globs = [
+  ".git/**",
+  ".venv/**",
+  "output/**",
+  ".lmit_work/**",
+  "sessions/**",
+  "__pycache__/**",
+  "*.zip",
+  "*.7z",
+  "*.rar",
+  "*.key",
+  "*.pem",
+  "*.p12",
+  "*.pfx",
+  "*key*.json",
+  "*credential*.json",
+  "*secret*",
+  "*token*",
+  ".env",
+]
+
+[conversion]
+enable_markitdown_plugins = true
+fetch_urls = true
+overwrite = false
+skip_unchanged = true
+blank_note_for_images = true
+
+# When true, convert only manifest records whose previous status was failed
+# or retryable partial. Equivalent to passing --retry-failed.
+retry_failed = false
+
+[polling]
+enabled = false
+interval_seconds = 300
+stable_seconds = 10
+
+[output_naming]
+# Enrich converted Markdown filenames after content extraction and before wiki ingest.
+# Disabled by default to preserve existing output paths.
+enrich_filenames = true
+
+# auto = first useful Markdown heading, then first meaningful content line.
+# heading = headings only. excerpt = first meaningful content line only.
+prefix_source = "auto"
+max_prefix_chars = 64
+separator = "__"
+
+[wiki]
+root_dir = "knowledge_base"
+raw_dir = "knowledge_base/raw"
+sources_dir = "knowledge_base/wiki/sources"
+topics_dir = "knowledge_base/wiki/topics"
+entities_dir = "knowledge_base/wiki/entities"
+queries_dir = "knowledge_base/wiki/queries"
+schema_dir = "knowledge_base/schema"
+log_path = "knowledge_base/wiki/log.md"
+index_path = "knowledge_base/wiki/index.md"
+
+[wiki_ingest]
+# For local ingestion, this usually points at output/raw. For a wiki-only
+# Docker/Unraid deployment, mount one or more already-converted Markdown roots
+# and list them here.
+source_dirs = [
+  "output/raw",
+]
+
+[wiki_runtime]
+settings_path = "knowledge_base/.wiki_runtime.json"
+state_path = "knowledge_base/.wiki_state.json"
+auto_sync_on_ingest = false
+search_limit = 8
+serve_host = "127.0.0.1"
+serve_port = 8765
+
+[[sessions]]
+name = "facebook"
+domains = [
+  "facebook.com",
+  "www.facebook.com",
+  "m.facebook.com",
+  "mbasic.facebook.com",
+]
+login_url = "https://www.facebook.com/login"
+state_file = "sessions/facebook_state.json"
+headless = true
+wait_ms = 8000
+navigation_timeout_ms = 90000
+retry_count = 2
+retry_backoff_ms = 1500
+
+# desktop keeps facebook.com share links closer to their canonical permalink.
+# mobile can be useful for simpler page text, but share links may fall back to
+# the home feed and accidentally capture unrelated feed ads.
+render_mode = "desktop"

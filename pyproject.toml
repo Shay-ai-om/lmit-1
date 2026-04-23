@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lmit"
+version = "0.1.0"
+description = "Local Markdown ingestion toolkit for Nextcloud files and links."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "markitdown>=0.1.5",
+]
+
+[project.optional-dependencies]
+documents = [
+  "markitdown[docx,pdf]>=0.1.5",
+]
+full = [
+  "markitdown[all]>=0.1.5",
+]
+session = [
+  "playwright>=1.51",
+]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+lmit = "lmit.cli:main"
+lmit-gui = "lmit.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
