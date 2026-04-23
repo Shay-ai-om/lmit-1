@@ -165,10 +165,27 @@ Install the session extras first:
 .\.venv\Scripts\python -m playwright install chromium
 ```
 
-Create or refresh a session:
+Create or refresh a Facebook session:
 
 ```powershell
 .\.venv\Scripts\python -m lmit.cli login --site facebook --config config/config.example.toml
+```
+
+The example config also includes generic session entries for Reddit, YouTube, and X/Twitter. To sign in manually before running GUI or batch conversion:
+
+```powershell
+.\.venv\Scripts\python -m lmit.cli login --site reddit --config config/config.example.toml
+.\.venv\Scripts\python -m lmit.cli login --site youtube --config config/config.example.toml
+.\.venv\Scripts\python -m lmit.cli login --site x --config config/config.example.toml
+```
+
+Session state is saved under:
+
+```text
+sessions/facebook_state.json
+sessions/reddit_state.json
+sessions/youtube_state.json
+sessions/x_state.json
 ```
 
 Then run conversion as usual:
@@ -178,6 +195,8 @@ Then run conversion as usual:
 ```
 
 If a configured logged-in site needs a session and the session is missing or expired, LMIT opens a visible browser window and logs `[LOGIN-REQUIRED]`.
+
+Facebook has a site-specific strategy. Reddit, YouTube, and X/Twitter currently use the generic session flow, so login state reuse is supported, but complex page behavior such as dynamic expansion, comments, video metadata, captions, anti-bot prompts, or two-factor verification may still require manual handling or future site-specific strategies.
 
 ## Output Naming
 

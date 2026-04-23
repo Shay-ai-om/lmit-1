@@ -129,3 +129,55 @@ retry_backoff_ms = 1500
 # mobile can be useful for simpler page text, but share links may fall back to
 # the home feed and accidentally capture unrelated feed ads.
 render_mode = "desktop"
+
+[[sessions]]
+name = "reddit"
+domains = [
+  "reddit.com",
+  "www.reddit.com",
+  "old.reddit.com",
+  "new.reddit.com",
+]
+login_url = "https://www.reddit.com/login/"
+state_file = "sessions/reddit_state.json"
+headless = true
+wait_ms = 8000
+navigation_timeout_ms = 90000
+retry_count = 2
+retry_backoff_ms = 1500
+render_mode = "desktop"
+
+[[sessions]]
+name = "youtube"
+domains = [
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "youtu.be",
+]
+login_url = "https://accounts.google.com/ServiceLogin?service=youtube"
+state_file = "sessions/youtube_state.json"
+headless = true
+wait_ms = 8000
+navigation_timeout_ms = 90000
+retry_count = 2
+retry_backoff_ms = 1500
+render_mode = "desktop"
+
+[[sessions]]
+name = "x"
+domains = [
+  "x.com",
+  "www.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+]
+login_url = "https://x.com/i/flow/login"
+state_file = "sessions/x_state.json"
+headless = true
+wait_ms = 8000
+navigation_timeout_ms = 90000
+retry_count = 2
+retry_backoff_ms = 1500
+render_mode = "desktop"
