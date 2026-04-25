@@ -14,10 +14,11 @@ from lmit.manifest import Manifest
 from lmit.path_safety import output_path_for, safe_unlink_file, safe_write_text
 from lmit.reports import ConversionReport
 from lmit.scanner import scan_input
+from lmit.sessions.login import capture_session_state
 from lmit.sessions.manager import SessionManager
 
 
-def run_convert(cfg: AppConfig) -> int:
+def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int:
     report = ConversionReport()
     cfg.paths.output_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.work_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +87,7 @@ def run_convert(cfg: AppConfig) -> int:
         adapter=adapter,
         work_dir=cfg.paths.work_dir,
         report=report,
+        capture_session=capture_session,
     )
 
     for scanned in files:

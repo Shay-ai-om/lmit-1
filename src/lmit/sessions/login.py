@@ -3,6 +3,7 @@ from __future__ import annotations
 from time import monotonic
 from urllib.request import urlopen
 import subprocess
+from typing import Callable
 
 from lmit.config import SessionSiteConfig
 from lmit.reports import ConversionReport
@@ -18,12 +19,15 @@ from lmit.sessions.launch import (
 )
 from lmit.sessions.strategies.facebook import is_facebook_site
 
+LoginConfirmationCallback = Callable[[SessionSiteConfig, ConversionReport], None]
+
 
 def capture_session_state(
     site: SessionSiteConfig,
     report: ConversionReport,
     *,
     timeout_seconds: int = 900,
+    confirm_login: LoginConfirmationCallback | None = None,
 ) -> None:
     try:
         from playwright.sync_api import sync_playwright
@@ -50,9 +54,16 @@ def capture_session_state(
         )
 
     deadline = monotonic() + timeout_seconds
+    confirm_login = confirm_login or wait_for_login_confirmation
     with sync_playwright() as p:
         if login_uses_cdp(site):
-            _capture_session_state_via_cdp(site, report, deadline=deadline, playwright=p)
+            _capture_session_state_via_cdp(
+                site,
+                report,
+                deadline=deadline,
+                playwright=p,
+                confirm_login=confirm_login,
+            )
             return
 
         browser = None
@@ -82,11 +93,7 @@ def capture_session_state(
                         return
                     page.wait_for_timeout(1000)
             else:
-                report.log(
-                    "[LOGIN-WAITING] complete login in the browser, then press Enter "
-                    "in this terminal to save the session"
-                )
-                input("Complete login in the browser, then press Enter here to save session...")
+                confirm_login(site, report)
                 context.storage_state(path=str(site.state_file))
                 report.log(f"[LOGIN-SAVED] {site.name}: {site.state_file}")
                 return
@@ -105,6 +112,7 @@ def _capture_session_state_via_cdp(
     *,
     deadline: float,
     playwright,
+    confirm_login: LoginConfirmationCallback,
 ) -> None:
     profile_dir = login_profile_dir(site)
     profile_dir.mkdir(parents=True, exist_ok=True)
@@ -130,11 +138,7 @@ def _capture_session_state_via_cdp(
     browser = None
     try:
         _wait_for_cdp(endpoint, deadline)
-        report.log(
-            "[LOGIN-WAITING] complete login in the browser window, then press Enter "
-            "in this terminal to save the session"
-        )
-        input("Complete login in the browser, then press Enter here to save session...")
+        confirm_login(site, report)
         browser = playwright.chromium.connect_over_cdp(endpoint)
         if not browser.contexts:
             raise RuntimeError(f"{site.name}: no browser context found after CDP connect")
@@ -159,3 +163,11 @@ def _wait_for_cdp(endpoint: str, deadline: float) -> None:
         except Exception:
             pass
     raise TimeoutError(f"timed out waiting for CDP endpoint: {endpoint}")
+
+
+def wait_for_login_confirmation(site: SessionSiteConfig, report: ConversionReport) -> None:
+    report.log(
+        "[LOGIN-WAITING] complete login in the browser, then press Enter "
+        "in this terminal to save the session"
+    )
+    input("Complete login in the browser, then press Enter here to save session...")

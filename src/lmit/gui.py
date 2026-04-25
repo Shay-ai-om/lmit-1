@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,14 @@ from lmit.gui_settings import (
 )
 from lmit.pipeline import run_convert
 from lmit.reports import load_latest_report
+from lmit.sessions.login import capture_session_state
+
+
+@dataclass
+class LoginPromptRequest:
+    site_name: str
+    done_event: Event
+    confirmed: bool | None = None
 
 
 class QueueWriter:
@@ -399,7 +408,7 @@ class RawMarkdownGui:
         code = 1
         try:
             with redirect_stdout(writer), redirect_stderr(writer):
-                code = run_convert(cfg)
+                code = run_convert(cfg, capture_session=self._capture_session_from_gui)
         except Exception:
             writer.flush()
             self.queue.put(("log", traceback.format_exc().rstrip()))
@@ -448,6 +457,8 @@ class RawMarkdownGui:
                 elif kind == "busy":
                     self.busy = bool(payload)
                     self._refresh_buttons()
+                elif kind == "login_prompt":
+                    self._handle_login_prompt(payload)
         except Empty:
             pass
         self.root.after(100, self._drain_queue)
@@ -514,6 +525,33 @@ class RawMarkdownGui:
 
         self._append_log(f"{title}: {exc!r}")
         messagebox.showerror(title, str(exc))
+
+    def _capture_session_from_gui(self, site, report) -> None:
+        capture_session_state(site, report, confirm_login=self._wait_for_login_confirmation)
+
+    def _wait_for_login_confirmation(self, site, report) -> None:
+        request = LoginPromptRequest(site_name=site.name, done_event=Event())
+        self.queue.put(("login_prompt", request))
+        request.done_event.wait()
+        if not request.confirmed:
+            raise RuntimeError(f"{site.name}: login canceled from GUI")
+
+    def _handle_login_prompt(self, request: LoginPromptRequest) -> None:
+        from tkinter import messagebox
+
+        self.status_var.set("等待登入確認")
+        confirmed = messagebox.askokcancel(
+            f"{request.site_name} 登入中",
+            (
+                f"已開啟 {request.site_name} 的登入瀏覽器。\n\n"
+                "請先在瀏覽器完成登入，再回到這個視窗按「確定」儲存 session。\n"
+                "若目前不想繼續，按「取消」。"
+            ),
+        )
+        request.confirmed = bool(confirmed)
+        request.done_event.set()
+        if self.busy:
+            self.status_var.set("執行轉換中")
 
 
 def current_timestamp() -> str:
