@@ -194,6 +194,8 @@ The social-site examples are configured to avoid the default fresh Playwright Ch
 - `youtube`: persistent Google Chrome profile
 - `x`: persistent Microsoft Edge profile
 
+They also enable `login_connect_over_cdp`, which means LMIT launches the real browser executable first and then attaches to it over Chrome DevTools Protocol, instead of asking Playwright to launch the login window directly.
+
 This helps with repeated bot-challenge loops on sites that dislike the default Playwright browser fingerprint. If you want to change browser channel, edit the matching session block. For example:
 
 ```toml
@@ -213,6 +215,16 @@ The persistent profiles are stored under:
 .lmit_work/browser_profiles/youtube
 .lmit_work/browser_profiles/x
 ```
+
+The default CDP ports in the example config are:
+
+```text
+reddit   9222
+youtube  9223
+x        9224
+```
+
+If your browser is installed in a non-standard location, add `browser_executable_path` to that session block.
 
 Then run conversion as usual:
 

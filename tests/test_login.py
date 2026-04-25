@@ -4,8 +4,12 @@ from lmit.config import SessionSiteConfig
 from lmit.sessions.launch import (
     STEALTH_INIT_SCRIPT,
     apply_stealth,
+    browser_executable_for_site,
     browser_launch_options,
+    login_cdp_endpoint,
+    login_cdp_port,
     login_profile_dir,
+    login_uses_cdp,
     login_uses_persistent_context,
 )
 
@@ -23,8 +27,11 @@ def _site(tmp_path: Path, **overrides) -> SessionSiteConfig:
         "retry_count": 2,
         "retry_backoff_ms": 1500,
         "browser_channel": None,
+        "browser_executable_path": None,
         "login_use_persistent_context": False,
         "login_persistent_profile_dir": None,
+        "login_connect_over_cdp": False,
+        "login_cdp_port": None,
     }
     payload.update(overrides)
     return SessionSiteConfig(**payload)
@@ -54,6 +61,22 @@ def test_login_profile_dir_prefers_explicit_path(tmp_path: Path):
 
     assert login_uses_persistent_context(site) is True
     assert login_profile_dir(site) == profile_dir
+
+
+def test_login_uses_cdp_when_enabled(tmp_path: Path):
+    site = _site(tmp_path, login_connect_over_cdp=True, login_cdp_port=9333)
+
+    assert login_uses_cdp(site) is True
+    assert login_cdp_port(site) == 9333
+    assert login_cdp_endpoint(site) == "http://127.0.0.1:9333"
+
+
+def test_browser_executable_prefers_explicit_path(tmp_path: Path):
+    executable = tmp_path / "chrome.exe"
+    executable.write_text("", encoding="utf-8")
+    site = _site(tmp_path, browser_executable_path=executable)
+
+    assert browser_executable_for_site(site) == executable
 
 
 def test_apply_stealth_adds_init_script():

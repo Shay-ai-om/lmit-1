@@ -121,8 +121,11 @@ def test_load_config_accepts_session_browser_profile_settings(tmp_path: Path):
                 'domains = ["reddit.com"]',
                 'login_url = "https://www.reddit.com/login/"',
                 'browser_channel = "msedge"',
+                'browser_executable_path = "C:/Browsers/msedge.exe"',
                 "login_use_persistent_context = true",
                 'login_persistent_profile_dir = ".lmit_work/browser_profiles/reddit"',
+                "login_connect_over_cdp = true",
+                "login_cdp_port = 9222",
             ]
         ),
         encoding="utf-8",
@@ -131,10 +134,13 @@ def test_load_config_accepts_session_browser_profile_settings(tmp_path: Path):
     cfg = load_config(config_path, cwd=tmp_path)
 
     assert cfg.sessions[0].browser_channel == "msedge"
+    assert cfg.sessions[0].browser_executable_path == Path("C:/Browsers/msedge.exe").resolve()
     assert cfg.sessions[0].login_use_persistent_context is True
     assert cfg.sessions[0].login_persistent_profile_dir == (
         tmp_path / ".lmit_work" / "browser_profiles" / "reddit"
     ).resolve()
+    assert cfg.sessions[0].login_connect_over_cdp is True
+    assert cfg.sessions[0].login_cdp_port == 9222
 
 
 def test_scanner_skips_unstable_files_only_when_polling_enabled(tmp_path: Path):

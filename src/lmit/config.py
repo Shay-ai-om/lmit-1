@@ -135,8 +135,11 @@ class SessionSiteConfig:
     retry_count: int = 2
     retry_backoff_ms: int = 1500
     browser_channel: str | None = None
+    browser_executable_path: Path | None = None
     login_use_persistent_context: bool = False
     login_persistent_profile_dir: Path | None = None
+    login_connect_over_cdp: bool = False
+    login_cdp_port: int | None = None
 
 
 @dataclass(frozen=True)
@@ -224,8 +227,11 @@ def default_config(cwd: Path | None = None) -> AppConfig:
                 retry_count=2,
                 retry_backoff_ms=1500,
                 browser_channel=None,
+                browser_executable_path=None,
                 login_use_persistent_context=False,
                 login_persistent_profile_dir=None,
+                login_connect_over_cdp=False,
+                login_cdp_port=None,
             )
         ],
     )
@@ -453,12 +459,19 @@ def _load_session_site(
         retry_count=int(data.get("retry_count", 2)),
         retry_backoff_ms=int(data.get("retry_backoff_ms", 1500)),
         browser_channel=_optional_string(data.get("browser_channel")),
+        browser_executable_path=_resolve_optional_path(
+            data.get("browser_executable_path"),
+            default=session_dir / f"{name}.exe",
+            base=base,
+        ),
         login_use_persistent_context=bool(data.get("login_use_persistent_context", False)),
         login_persistent_profile_dir=_resolve_optional_path(
             data.get("login_persistent_profile_dir"),
             default=session_dir / name,
             base=base,
         ),
+        login_connect_over_cdp=bool(data.get("login_connect_over_cdp", False)),
+        login_cdp_port=_optional_int(data.get("login_cdp_port")),
     )
 
 
@@ -511,3 +524,12 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

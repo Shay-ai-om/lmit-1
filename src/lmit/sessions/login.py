@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from time import monotonic
+from urllib.request import urlopen
+import subprocess
 
 from lmit.config import SessionSiteConfig
 from lmit.reports import ConversionReport
 from lmit.sessions.launch import (
     apply_stealth,
+    browser_executable_for_site,
     browser_launch_options,
+    login_cdp_endpoint,
+    login_cdp_port,
     login_profile_dir,
+    login_uses_cdp,
     login_uses_persistent_context,
 )
 from lmit.sessions.strategies.facebook import is_facebook_site
@@ -37,9 +43,18 @@ def capture_session_state(
             "[LOGIN-BROWSER] "
             f"{site.name}: persistent profile = {login_profile_dir(site)}"
         )
+    if login_uses_cdp(site):
+        report.log(
+            "[LOGIN-BROWSER] "
+            f"{site.name}: connect_over_cdp = {login_cdp_endpoint(site)}"
+        )
 
     deadline = monotonic() + timeout_seconds
     with sync_playwright() as p:
+        if login_uses_cdp(site):
+            _capture_session_state_via_cdp(site, report, deadline=deadline, playwright=p)
+            return
+
         browser = None
         if login_uses_persistent_context(site):
             profile_dir = login_profile_dir(site)
@@ -82,3 +97,67 @@ def capture_session_state(
                 context.close()
 
     raise TimeoutError(f"timed out waiting for login cookies for {site.name}")
+
+
+def _capture_session_state_via_cdp(
+    site: SessionSiteConfig,
+    report: ConversionReport,
+    *,
+    deadline: float,
+    playwright,
+) -> None:
+    profile_dir = login_profile_dir(site)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    executable = browser_executable_for_site(site)
+    endpoint = login_cdp_endpoint(site)
+    port = login_cdp_port(site)
+    process = subprocess.Popen(
+        [
+            str(executable),
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={profile_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--new-window",
+            site.login_url,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    report.log(f"[LOGIN-BROWSER] {site.name}: executable = {executable}")
+
+    browser = None
+    try:
+        _wait_for_cdp(endpoint, deadline)
+        browser = playwright.chromium.connect_over_cdp(endpoint)
+        if not browser.contexts:
+            raise RuntimeError(f"{site.name}: no browser context found after CDP connect")
+        context = browser.contexts[0]
+        apply_stealth(context)
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto(site.login_url, wait_until="domcontentloaded")
+        report.log(
+            "[LOGIN-WAITING] complete login in the browser window, then press Enter "
+            "in this terminal to save the session"
+        )
+        input("Complete login in the browser, then press Enter here to save session...")
+        context.storage_state(path=str(site.state_file))
+        report.log(f"[LOGIN-SAVED] {site.name}: {site.state_file}")
+    finally:
+        if browser is not None:
+            browser.close()
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def _wait_for_cdp(endpoint: str, deadline: float) -> None:
+    while monotonic() < deadline:
+        try:
+            with urlopen(f"{endpoint}/json/version", timeout=2):
+                return
+        except Exception:
+            pass
+    raise TimeoutError(f"timed out waiting for CDP endpoint: {endpoint}")
