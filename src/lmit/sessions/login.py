@@ -118,6 +118,7 @@ def _capture_session_state_via_cdp(
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
+            "--disable-popup-blocking",
             "--new-window",
             site.login_url,
         ],
@@ -129,18 +130,15 @@ def _capture_session_state_via_cdp(
     browser = None
     try:
         _wait_for_cdp(endpoint, deadline)
-        browser = playwright.chromium.connect_over_cdp(endpoint)
-        if not browser.contexts:
-            raise RuntimeError(f"{site.name}: no browser context found after CDP connect")
-        context = browser.contexts[0]
-        apply_stealth(context)
-        page = context.pages[0] if context.pages else context.new_page()
-        page.goto(site.login_url, wait_until="domcontentloaded")
         report.log(
             "[LOGIN-WAITING] complete login in the browser window, then press Enter "
             "in this terminal to save the session"
         )
         input("Complete login in the browser, then press Enter here to save session...")
+        browser = playwright.chromium.connect_over_cdp(endpoint)
+        if not browser.contexts:
+            raise RuntimeError(f"{site.name}: no browser context found after CDP connect")
+        context = browser.contexts[0]
         context.storage_state(path=str(site.state_file))
         report.log(f"[LOGIN-SAVED] {site.name}: {site.state_file}")
     finally:
