@@ -67,6 +67,10 @@ blank_note_for_images = true
 retry_failed = false
 
 [public_fetch]
+# Public URLs use the Scrapling-first pipeline when the optional Scrapling
+# extra is installed. If Scrapling is missing, public URLs fall back to the
+# legacy MarkItDown path.
+# Logged-in session sites use the session pipeline instead.
 provider = "auto"
 enable_scrapling = true
 enable_scrapling_dynamic = true
@@ -75,6 +79,7 @@ scrapling_block_ads = true
 request_timeout_seconds = 30
 navigation_timeout_ms = 45000
 min_meaningful_chars = 200
+# Set provider = "legacy" to roll public URLs back to the older MarkItDown-first flow.
 
 [polling]
 enabled = false
@@ -92,6 +97,8 @@ prefix_source = "auto"
 max_prefix_chars = 64
 separator = "__"
 
+# Reserved for the future wiki-only split-out project. These sections are kept
+# here as placeholders, but they are not part of the supported public release.
 [wiki]
 root_dir = "knowledge_base"
 raw_dir = "knowledge_base/raw"

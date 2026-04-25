@@ -3,7 +3,7 @@
 LMIT is a local desktop tool for turning files and collected links into raw Markdown.
 This repository currently publishes only the first part of the project: local raw Markdown ingestion.
 
-The planned wiki-only knowledge-base layer is not part of this GitHub release. It will be split into a separate project later.
+The planned wiki-only knowledge-base layer is tracked separately in [docs/part2/plan.md](docs/part2/plan.md) and is not part of this GitHub release.
 
 ## What It Does
 
@@ -48,6 +48,15 @@ For the full MarkItDown optional set:
 ```powershell
 .\.venv\Scripts\python -m pip install -e ".[full,dev]"
 ```
+
+For the Scrapling public-URL pipeline:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[scrapling,dev]"
+.\.venv\Scripts\scrapling install
+```
+
+If you skip the Scrapling extra, public URLs still work. The new pipeline will fall back to the legacy MarkItDown path when Scrapling is unavailable.
 
 For logged-in page capture:
 
@@ -146,6 +155,17 @@ Normal ingestion should keep URL fetching enabled:
 ```toml
 [conversion]
 fetch_urls = true
+```
+
+Public URLs use the new Scrapling-first pipeline when `provider = "auto"`. Session-backed sites do not use this block; they continue through the logged-in session pipeline.
+
+If Scrapling is not installed, that public pipeline falls back automatically to the legacy MarkItDown provider.
+
+To roll public URLs back to the older MarkItDown-first flow, set:
+
+```toml
+[public_fetch]
+provider = "legacy"
 ```
 
 For a dry run that preserves links but does not fetch page content:
@@ -266,6 +286,7 @@ output/reports/     conversion reports
 sessions/           browser session state
 config/             example and local configuration
 docs/part1/plan.md  first-part plan
+docs/part2/plan.md  second-part plan
 ```
 
 ## Safety Notes
@@ -274,6 +295,7 @@ docs/part1/plan.md  first-part plan
 - Generated output, reports, manifests, session files, and GUI settings should stay out of git.
 - Session files may contain sensitive cookies.
 - Use `config/config.example.toml` as the public template and keep private configs local.
+- The wiki-related sections in `config/config.example.toml` are reserved placeholders for the future split-out wiki project.
 
 ## Development
 
@@ -286,5 +308,4 @@ Run tests:
 Project planning:
 
 - [docs/part1/plan.md](docs/part1/plan.md): current raw Markdown ingestion project
-
-Private requirement and second-part planning notes are intentionally kept out of the public repository.
+- [docs/part2/plan.md](docs/part2/plan.md): future wiki-only knowledge-base project
