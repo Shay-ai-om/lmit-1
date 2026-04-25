@@ -7,6 +7,8 @@ from lmit.converters.markitdown_adapter import MarkItDownAdapter
 from lmit.fetchers.npm_registry import fetch_npm_package_markdown, parse_npm_package_url
 from lmit.reports import ConversionReport
 
+PUBLIC_BROWSER_NAVIGATION_TIMEOUT_MS = 45000
+
 
 class PublicUrlFetcher:
     def __init__(
@@ -15,12 +17,16 @@ class PublicUrlFetcher:
         *,
         work_dir: Path | None = None,
         report: ConversionReport | None = None,
+        navigation_timeout_ms: int = PUBLIC_BROWSER_NAVIGATION_TIMEOUT_MS,
     ):
         self.adapter = adapter
         self.work_dir = work_dir
         self.report = report
+        self.navigation_timeout_ms = navigation_timeout_ms
 
     def fetch(self, url: str) -> str:
+        if self.report is not None:
+            self.report.log(f"[URL-FETCH-START] {url}")
         npm_package_url = parse_npm_package_url(url)
         if npm_package_url is not None:
             if self.report is not None:
@@ -34,8 +40,12 @@ class PublicUrlFetcher:
                 raise
             try:
                 return self._fetch_with_browser(url)
-            except Exception:
-                raise original_exc
+            except Exception as fallback_exc:
+                if self.report is not None:
+                    self.report.log(
+                        f"[PUBLIC-BROWSER-FALLBACK-FAILED] {url}: {fallback_exc!r}"
+                    )
+                raise original_exc from fallback_exc
 
     def _fetch_with_browser(self, url: str) -> str:
         try:
@@ -55,7 +65,11 @@ class PublicUrlFetcher:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
-            page.goto(url, wait_until="domcontentloaded")
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=self.navigation_timeout_ms,
+            )
             try:
                 page.wait_for_load_state("networkidle", timeout=15000)
             except PlaywrightTimeoutError:

@@ -23,6 +23,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
     cfg.paths.output_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.work_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.report_dir.mkdir(parents=True, exist_ok=True)
+    report.enable_running_report(cfg.paths.report_dir)
 
     report.log("=== LMIT convert start ===")
     report.log("input_dirs = " + ", ".join(str(path) for path in cfg.paths.input_dirs))
@@ -37,6 +38,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
         report.log(f"[FATAL] scan failed: {exc!r}")
         report.stats.failed += 1
         report.write(cfg.paths.report_dir)
+        report.clear_running_report()
         return 1
 
     report.stats.scanned_items = scan_summary.scanned_items
@@ -91,6 +93,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
     )
 
     for scanned in files:
+        report.log(f"[ITEM-START] {scanned.manifest_key}")
         base_out_path = output_path_for(
             scanned.source_root or cfg.paths.input_dir,
             cfg.paths.output_dir,
@@ -191,6 +194,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
 
     manifest.save()
     md_path, json_path = report.write(cfg.paths.report_dir)
+    report.clear_running_report()
     report.log(f"report_md = {md_path}")
     report.log(f"report_json = {json_path}")
     report.log("=== LMIT convert done ===")

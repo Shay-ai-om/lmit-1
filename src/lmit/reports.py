@@ -8,6 +8,9 @@ import json
 import sys
 
 
+RUNNING_REPORT_NAME = "conversion_report_running"
+
+
 @dataclass
 class ConversionStats:
     scanned_items: int = 0
@@ -34,6 +37,8 @@ class ConversionStats:
 class ConversionReport:
     stats: ConversionStats = field(default_factory=ConversionStats)
     lines: list[str] = field(default_factory=list)
+    _running_md_path: Path | None = field(default=None, init=False, repr=False)
+    _running_json_path: Path | None = field(default=None, init=False, repr=False)
 
     def log(self, message: str) -> None:
         try:
@@ -44,35 +49,43 @@ class ConversionReport:
             sys.stdout.buffer.write((message + "\n").encode(encoding, errors="replace"))
             sys.stdout.buffer.flush()
         self.lines.append(message)
+        self.flush_running()
+
+    def enable_running_report(self, report_dir: Path) -> tuple[Path, Path]:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        self._running_md_path = report_dir / f"{RUNNING_REPORT_NAME}.md"
+        self._running_json_path = report_dir / f"{RUNNING_REPORT_NAME}.json"
+        self.flush_running()
+        return self._running_md_path, self._running_json_path
+
+    def flush_running(self) -> tuple[Path, Path] | None:
+        if self._running_md_path is None or self._running_json_path is None:
+            return None
+        _write_report_paths(
+            self.stats,
+            self.lines,
+            md_path=self._running_md_path,
+            json_path=self._running_json_path,
+        )
+        return self._running_md_path, self._running_json_path
+
+    def clear_running_report(self) -> None:
+        for path in (self._running_md_path, self._running_json_path):
+            if path is None:
+                continue
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        self._running_md_path = None
+        self._running_json_path = None
 
     def write(self, report_dir: Path) -> tuple[Path, Path]:
         report_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         md_path = report_dir / f"conversion_report_{timestamp}.md"
         json_path = report_dir / f"conversion_report_{timestamp}.json"
-
-        md_lines = [
-            "# Conversion Report",
-            "",
-            f"- Generated at UTC: {datetime.now(timezone.utc).isoformat()}",
-            "",
-            "## Stats",
-            "",
-        ]
-        for key, value in asdict(self.stats).items():
-            md_lines.append(f"- {key}: {value}")
-        md_lines.extend(["", "## Log", ""])
-        md_lines.extend(f"- {line}" for line in self.lines)
-        md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
-
-        json_path.write_text(
-            json.dumps(
-                {"stats": asdict(self.stats), "log": self.lines},
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        _write_report_paths(self.stats, self.lines, md_path=md_path, json_path=json_path)
         return md_path, json_path
 
 
@@ -145,7 +158,11 @@ SUMMARY_STATS = [
 
 def latest_report_path(report_dir: Path) -> Path:
     candidates = sorted(
-        report_dir.glob("conversion_report_*.json"),
+        (
+            path
+            for path in report_dir.glob("conversion_report_*.json")
+            if path.stem != RUNNING_REPORT_NAME
+        ),
         key=lambda path: (path.stat().st_mtime_ns, path.name),
         reverse=True,
     )
@@ -299,3 +316,37 @@ def _render_diagnostic_details(diagnostics: ReportDiagnostics) -> list[str]:
         lines.append(f"- {name}:")
         lines.extend(f"  - {item}" for item in items)
     return lines
+
+
+def _write_report_paths(
+    stats: ConversionStats,
+    lines: list[str],
+    *,
+    md_path: Path,
+    json_path: Path,
+) -> None:
+    md_path.write_text(_render_markdown(stats, lines), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(
+            {"stats": asdict(stats), "log": lines},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _render_markdown(stats: ConversionStats, lines: list[str]) -> str:
+    md_lines = [
+        "# Conversion Report",
+        "",
+        f"- Generated at UTC: {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "## Stats",
+        "",
+    ]
+    for key, value in asdict(stats).items():
+        md_lines.append(f"- {key}: {value}")
+    md_lines.extend(["", "## Log", ""])
+    md_lines.extend(f"- {line}" for line in lines)
+    return "\n".join(md_lines) + "\n"

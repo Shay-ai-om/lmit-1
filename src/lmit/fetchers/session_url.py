@@ -41,6 +41,7 @@ class SessionUrlFetcher:
         self.playwright_api = playwright_api
 
     def fetch(self, url: str, site: SessionSiteConfig) -> str:
+        self.report.log(f"[SESSION-URL-FETCH-START] site={site.name} url={url}")
         playwright_error, playwright_timeout_error, sync_playwright = self._load_playwright_api()
 
         if not site.state_file.exists():
