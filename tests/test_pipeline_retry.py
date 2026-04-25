@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from lmit.config import default_config, with_overrides
+from lmit.config import PublicFetchConfig, default_config, with_overrides
 from lmit.manifest import Manifest
+from lmit import pipeline
 from lmit.pipeline import run_convert
 from lmit.scanner import ScannedFile
 
@@ -129,3 +130,45 @@ def test_run_convert_does_not_mark_unstable_source_missing(tmp_path: Path):
     updated = Manifest.load(manifest_path)
     assert code == 0
     assert updated.records["syncing.md"].status == "success"
+
+
+def test_run_convert_passes_public_fetch_config_to_public_url_fetcher(
+    tmp_path: Path,
+    monkeypatch,
+):
+    captured: dict[str, object] = {}
+
+    class FakePublicUrlFetcher:
+        def __init__(self, adapter, *, work_dir=None, report=None, public_fetch=None, **kwargs):
+            captured["adapter"] = adapter
+            captured["work_dir"] = work_dir
+            captured["report"] = report
+            captured["public_fetch"] = public_fetch
+
+        def fetch(self, url: str) -> str:
+            raise AssertionError("public fetch should not run in this test")
+
+    monkeypatch.setattr(pipeline, "PublicUrlFetcher", FakePublicUrlFetcher)
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    cfg = _cfg(tmp_path)
+    cfg = replace(
+        cfg,
+        public_fetch=PublicFetchConfig(
+            provider="legacy",
+            enable_scrapling=False,
+            enable_scrapling_dynamic=False,
+            scrapling_cleanup="none",
+            scrapling_block_ads=False,
+            request_timeout_seconds=12,
+            navigation_timeout_ms=15000,
+            min_meaningful_chars=123,
+        ),
+    )
+
+    code = run_convert(cfg)
+
+    assert code == 0
+    assert captured["work_dir"] == cfg.paths.work_dir
+    assert captured["public_fetch"] == cfg.public_fetch

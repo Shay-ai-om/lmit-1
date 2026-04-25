@@ -83,6 +83,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
         adapter,
         work_dir=cfg.paths.work_dir,
         report=report,
+        public_fetch=cfg.public_fetch,
     )
     session_manager = SessionManager(cfg)
     session_fetcher = SessionUrlFetcher(
