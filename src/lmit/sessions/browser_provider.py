@@ -7,7 +7,7 @@ from typing import Protocol
 from lmit.config import SessionSiteConfig
 from lmit.converters.markitdown_adapter import MarkItDownAdapter
 from lmit.reports import ConversionReport
-from lmit.sessions.launch import browser_launch_options
+from lmit.sessions.launch import apply_stealth, browser_launch_options
 
 
 class SessionLoginRequired(RuntimeError):
@@ -71,6 +71,7 @@ class PlaywrightBrowserProvider:
                 context_kwargs = {"storage_state": str(site.state_file)}
                 context_kwargs.update(strategy.context_options())
                 context = browser.new_context(**context_kwargs)
+                apply_stealth(context)
                 page = context.new_page()
                 page.goto(
                     target_url,

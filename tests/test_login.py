@@ -2,6 +2,8 @@ from pathlib import Path
 
 from lmit.config import SessionSiteConfig
 from lmit.sessions.launch import (
+    STEALTH_INIT_SCRIPT,
+    apply_stealth,
     browser_launch_options,
     login_profile_dir,
     login_uses_persistent_context,
@@ -33,6 +35,8 @@ def test_browser_launch_options_include_channel_when_configured(tmp_path: Path):
 
     assert browser_launch_options(site, headless=False) == {
         "headless": False,
+        "ignore_default_args": ["--enable-automation"],
+        "args": ["--disable-blink-features=AutomationControlled"],
         "channel": "msedge",
     }
 
@@ -50,3 +54,18 @@ def test_login_profile_dir_prefers_explicit_path(tmp_path: Path):
 
     assert login_uses_persistent_context(site) is True
     assert login_profile_dir(site) == profile_dir
+
+
+def test_apply_stealth_adds_init_script():
+    class FakeContext:
+        def __init__(self):
+            self.scripts = []
+
+        def add_init_script(self, script):
+            self.scripts.append(script)
+
+    context = FakeContext()
+
+    apply_stealth(context)
+
+    assert context.scripts == [STEALTH_INIT_SCRIPT]

@@ -5,6 +5,7 @@ from time import monotonic
 from lmit.config import SessionSiteConfig
 from lmit.reports import ConversionReport
 from lmit.sessions.launch import (
+    apply_stealth,
     browser_launch_options,
     login_profile_dir,
     login_uses_persistent_context,
@@ -54,6 +55,7 @@ def capture_session_state(
             page = context.new_page()
 
         try:
+            apply_stealth(context)
             page.goto(site.login_url, wait_until="domcontentloaded")
 
             if is_facebook_site(site):
