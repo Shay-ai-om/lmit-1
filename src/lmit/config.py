@@ -80,6 +80,18 @@ class ConversionConfig:
 
 
 @dataclass(frozen=True)
+class PublicFetchConfig:
+    provider: str = "auto"
+    enable_scrapling: bool = True
+    enable_scrapling_dynamic: bool = True
+    scrapling_cleanup: str = "ai_targeted"
+    scrapling_block_ads: bool = True
+    request_timeout_seconds: int = 30
+    navigation_timeout_ms: int = 45000
+    min_meaningful_chars: int = 200
+
+
+@dataclass(frozen=True)
 class PollingConfig:
     enabled: bool
     interval_seconds: int
@@ -147,6 +159,7 @@ class AppConfig:
     paths: PathsConfig
     scan: ScanConfig
     conversion: ConversionConfig
+    public_fetch: PublicFetchConfig
     polling: PollingConfig
     output_naming: OutputNamingConfig
     wiki: WikiConfig
@@ -180,6 +193,7 @@ def default_config(cwd: Path | None = None) -> AppConfig:
             only_patterns=(),
             retry_failed=False,
         ),
+        public_fetch=PublicFetchConfig(),
         polling=PollingConfig(enabled=False, interval_seconds=300, stable_seconds=10),
         output_naming=OutputNamingConfig(
             enrich_filenames=False,
@@ -287,6 +301,47 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         retry_failed=bool(conversion_data.get("retry_failed", cfg.conversion.retry_failed)),
     )
 
+    public_fetch_data = data.get("public_fetch", {})
+    public_fetch = PublicFetchConfig(
+        provider=str(public_fetch_data.get("provider", cfg.public_fetch.provider)),
+        enable_scrapling=bool(
+            public_fetch_data.get("enable_scrapling", cfg.public_fetch.enable_scrapling)
+        ),
+        enable_scrapling_dynamic=bool(
+            public_fetch_data.get(
+                "enable_scrapling_dynamic",
+                cfg.public_fetch.enable_scrapling_dynamic,
+            )
+        ),
+        scrapling_cleanup=str(
+            public_fetch_data.get("scrapling_cleanup", cfg.public_fetch.scrapling_cleanup)
+        ),
+        scrapling_block_ads=bool(
+            public_fetch_data.get(
+                "scrapling_block_ads",
+                cfg.public_fetch.scrapling_block_ads,
+            )
+        ),
+        request_timeout_seconds=int(
+            public_fetch_data.get(
+                "request_timeout_seconds",
+                cfg.public_fetch.request_timeout_seconds,
+            )
+        ),
+        navigation_timeout_ms=int(
+            public_fetch_data.get(
+                "navigation_timeout_ms",
+                cfg.public_fetch.navigation_timeout_ms,
+            )
+        ),
+        min_meaningful_chars=int(
+            public_fetch_data.get(
+                "min_meaningful_chars",
+                cfg.public_fetch.min_meaningful_chars,
+            )
+        ),
+    )
+
     polling_data = data.get("polling", {})
     polling = PollingConfig(
         enabled=bool(polling_data.get("enabled", cfg.polling.enabled)),
@@ -388,6 +443,7 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         paths=paths,
         scan=scan,
         conversion=conversion,
+        public_fetch=public_fetch,
         polling=polling,
         output_naming=output_naming,
         wiki=wiki,

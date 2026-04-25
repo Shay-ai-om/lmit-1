@@ -66,6 +66,16 @@ blank_note_for_images = true
 # or retryable partial. Equivalent to passing --retry-failed.
 retry_failed = false
 
+[public_fetch]
+provider = "auto"
+enable_scrapling = true
+enable_scrapling_dynamic = true
+scrapling_cleanup = "ai_targeted"
+scrapling_block_ads = true
+request_timeout_seconds = 30
+navigation_timeout_ms = 45000
+min_meaningful_chars = 200
+
 [polling]
 enabled = false
 interval_seconds = 300
@@ -74,7 +84,7 @@ stable_seconds = 10
 [output_naming]
 # Enrich converted Markdown filenames after content extraction and before wiki ingest.
 # Disabled by default to preserve existing output paths.
-enrich_filenames = true
+enrich_filenames = false
 
 # auto = first useful Markdown heading, then first meaningful content line.
 # heading = headings only. excerpt = first meaningful content line only.
