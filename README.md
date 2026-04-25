@@ -188,6 +188,18 @@ sessions/youtube_state.json
 sessions/x_state.json
 ```
 
+The Reddit example is configured to open a persistent Microsoft Edge profile for login instead of the default fresh Playwright Chromium context. This helps with Reddit's bot challenge loop. If you prefer Google Chrome, change:
+
+```toml
+browser_channel = "msedge"
+```
+
+to:
+
+```toml
+browser_channel = "chrome"
+```
+
 Then run conversion as usual:
 
 ```powershell

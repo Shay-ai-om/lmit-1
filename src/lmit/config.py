@@ -134,6 +134,9 @@ class SessionSiteConfig:
     navigation_timeout_ms: int = 90000
     retry_count: int = 2
     retry_backoff_ms: int = 1500
+    browser_channel: str | None = None
+    login_use_persistent_context: bool = False
+    login_persistent_profile_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -220,6 +223,9 @@ def default_config(cwd: Path | None = None) -> AppConfig:
                 navigation_timeout_ms=90000,
                 retry_count=2,
                 retry_backoff_ms=1500,
+                browser_channel=None,
+                login_use_persistent_context=False,
+                login_persistent_profile_dir=None,
             )
         ],
     )
@@ -446,6 +452,13 @@ def _load_session_site(
         navigation_timeout_ms=int(data.get("navigation_timeout_ms", 90000)),
         retry_count=int(data.get("retry_count", 2)),
         retry_backoff_ms=int(data.get("retry_backoff_ms", 1500)),
+        browser_channel=_optional_string(data.get("browser_channel")),
+        login_use_persistent_context=bool(data.get("login_use_persistent_context", False)),
+        login_persistent_profile_dir=_resolve_optional_path(
+            data.get("login_persistent_profile_dir"),
+            default=session_dir / name,
+            base=base,
+        ),
     )
 
 
@@ -456,6 +469,13 @@ def _resolve_path(value: str | None, default: Path, base: Path) -> Path:
     if not path.is_absolute():
         path = base / path
     return path.resolve()
+
+
+def _resolve_optional_path(value: Any, *, default: Path, base: Path) -> Path | None:
+    text = _optional_string(value)
+    if text is None:
+        return None
+    return _resolve_path(text, default, base)
 
 
 def _resolve_paths(value: Any, default: tuple[Path, ...], base: Path) -> tuple[Path, ...]:
@@ -484,3 +504,10 @@ def _normalize_exts(items: Any) -> set[str]:
         str(item).lower() if str(item).startswith(".") else f".{item}".lower()
         for item in items
     }
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

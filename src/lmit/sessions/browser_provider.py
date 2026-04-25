@@ -7,6 +7,7 @@ from typing import Protocol
 from lmit.config import SessionSiteConfig
 from lmit.converters.markitdown_adapter import MarkItDownAdapter
 from lmit.reports import ConversionReport
+from lmit.sessions.launch import browser_launch_options
 
 
 class SessionLoginRequired(RuntimeError):
@@ -65,7 +66,7 @@ class PlaywrightBrowserProvider:
         temp_html = strategy.temp_html_path(self.work_dir, site, url)
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=site.headless)
+            browser = p.chromium.launch(**browser_launch_options(site, headless=site.headless))
             try:
                 context_kwargs = {"storage_state": str(site.state_file)}
                 context_kwargs.update(strategy.context_options())

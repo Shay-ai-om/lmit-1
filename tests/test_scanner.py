@@ -111,6 +111,32 @@ def test_load_config_accepts_session_render_mode(tmp_path: Path):
     assert cfg.sessions[0].retry_backoff_ms == 250
 
 
+def test_load_config_accepts_session_browser_profile_settings(tmp_path: Path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '\n'.join(
+            [
+                "[[sessions]]",
+                'name = "reddit"',
+                'domains = ["reddit.com"]',
+                'login_url = "https://www.reddit.com/login/"',
+                'browser_channel = "msedge"',
+                "login_use_persistent_context = true",
+                'login_persistent_profile_dir = ".lmit_work/browser_profiles/reddit"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(config_path, cwd=tmp_path)
+
+    assert cfg.sessions[0].browser_channel == "msedge"
+    assert cfg.sessions[0].login_use_persistent_context is True
+    assert cfg.sessions[0].login_persistent_profile_dir == (
+        tmp_path / ".lmit_work" / "browser_profiles" / "reddit"
+    ).resolve()
+
+
 def test_scanner_skips_unstable_files_only_when_polling_enabled(tmp_path: Path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
