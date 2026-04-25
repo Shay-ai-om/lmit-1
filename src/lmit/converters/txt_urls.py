@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 from lmit.fetchers.public_url import PublicUrlFetcher
+from lmit.fetchers.public_url_blocked import is_blocked_public_url_text
 from lmit.fetchers.session_url import SessionUrlFetcher
 from lmit.reports import ConversionReport
 from lmit.sessions.manager import SessionManager
@@ -135,19 +136,6 @@ def _blank(text: str | None) -> bool:
 
 
 def _blocked_content(text: str) -> bool:
-    lowered = text.lower()
-    markers = [
-        "performing security verification",
-        "enable javascript and cookies to continue",
-        "verification successful. waiting for",
-        "checking your browser",
-        "just a moment...",
-        "cloudflare ray id",
-        "sign in to continue",
-        "log in to continue",
-        "目前無法查看此內容",
-        "擁有者僅與一小群用戶分享內容",
-        "變更了分享對象",
-        "刪除了內容",
-    ]
-    return any(marker in lowered for marker in markers)
+    return is_blocked_public_url_text(text)
+
+
