@@ -165,6 +165,9 @@ wait_ms = 8000
 navigation_timeout_ms = 90000
 retry_count = 2
 retry_backoff_ms = 1500
+browser_channel = "chrome"
+login_use_persistent_context = true
+login_persistent_profile_dir = ".lmit_work/browser_profiles/youtube"
 render_mode = "desktop"
 
 [[sessions]]
@@ -183,4 +186,7 @@ wait_ms = 8000
 navigation_timeout_ms = 90000
 retry_count = 2
 retry_backoff_ms = 1500
+browser_channel = "msedge"
+login_use_persistent_context = true
+login_persistent_profile_dir = ".lmit_work/browser_profiles/x"
 render_mode = "desktop"

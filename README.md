@@ -188,7 +188,13 @@ sessions/youtube_state.json
 sessions/x_state.json
 ```
 
-The Reddit example is configured to open a persistent Microsoft Edge profile for login instead of the default fresh Playwright Chromium context. This helps with Reddit's bot challenge loop. If you prefer Google Chrome, change:
+The social-site examples are configured to avoid the default fresh Playwright Chromium login context:
+
+- `reddit`: persistent Microsoft Edge profile
+- `youtube`: persistent Google Chrome profile
+- `x`: persistent Microsoft Edge profile
+
+This helps with repeated bot-challenge loops on sites that dislike the default Playwright browser fingerprint. If you want to change browser channel, edit the matching session block. For example:
 
 ```toml
 browser_channel = "msedge"
@@ -198,6 +204,14 @@ to:
 
 ```toml
 browser_channel = "chrome"
+```
+
+The persistent profiles are stored under:
+
+```text
+.lmit_work/browser_profiles/reddit
+.lmit_work/browser_profiles/youtube
+.lmit_work/browser_profiles/x
 ```
 
 Then run conversion as usual:
