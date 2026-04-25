@@ -42,7 +42,7 @@ def convert_txt_with_urls(
 ) -> TxtUrlConversionResult:
     raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
     urls = extract_urls(raw_text)
-    report.stats.url_found += len(urls)
+    _increment_report_stat(report, "url_found", amount=len(urls))
 
     parts: list[str] = [
         "# TXT Source",
@@ -80,8 +80,10 @@ def convert_txt_with_urls(
                     text = "[BLANK_URL_OUTPUT]\n"
                     blank_count += 1
                     failed_count += 1
-                    report.stats.url_fetch_failed += 1
+                    _increment_report_stat(report, "url_fetch_failed")
                 elif _blocked_content(text):
+                    failed_count += 1
+                    _increment_report_stat(report, "url_fetch_failed")
                     report.log(f"[URL-CONTENT-BLOCKED] {url}")
                     text = (
                         "[URL_CONTENT_BLOCKED]\n\n"
@@ -89,18 +91,18 @@ def convert_txt_with_urls(
                         "verification page rather than the target content.\n\n"
                         + text
                     )
-                    failed_count += 1
-                    report.stats.url_fetch_failed += 1
                 else:
-                    report.stats.url_fetch_success += 1
+                    _increment_report_stat(report, "url_fetch_success")
             else:
                 text = session_fetcher.fetch(url, site)
                 if _blank(text):
                     text = "[BLANK_SESSION_URL_OUTPUT]\n"
                     blank_count += 1
                     failed_count += 1
-                    report.stats.session_url_fetch_failed += 1
+                    _increment_report_stat(report, "session_url_fetch_failed")
                 elif _blocked_content(text):
+                    failed_count += 1
+                    _increment_report_stat(report, "session_url_fetch_failed")
                     report.log(f"[SESSION-URL-CONTENT-BLOCKED] {url}")
                     text = (
                         "[SESSION_URL_CONTENT_BLOCKED]\n\n"
@@ -108,17 +110,15 @@ def convert_txt_with_urls(
                         "verification page rather than the target content.\n\n"
                         + text
                     )
-                    failed_count += 1
-                    report.stats.session_url_fetch_failed += 1
                 else:
-                    report.stats.session_url_fetch_success += 1
+                    _increment_report_stat(report, "session_url_fetch_success")
             parts.extend([text.rstrip(), "", "---", ""])
         except Exception as exc:
             if site is None:
-                report.stats.url_fetch_failed += 1
+                _increment_report_stat(report, "url_fetch_failed")
                 marker = "URL_FETCH_FAILED"
             else:
-                report.stats.session_url_fetch_failed += 1
+                _increment_report_stat(report, "session_url_fetch_failed")
                 marker = "SESSION_URL_FETCH_FAILED"
             report.log(f"[{marker}] {url}: {exc!r}")
             failed_count += 1
@@ -137,5 +137,15 @@ def _blank(text: str | None) -> bool:
 
 def _blocked_content(text: str) -> bool:
     return is_blocked_public_url_text(text)
+
+
+def _increment_report_stat(
+    report: ConversionReport,
+    stat_name: str,
+    *,
+    amount: int = 1,
+) -> None:
+    setattr(report.stats, stat_name, getattr(report.stats, stat_name) + amount)
+    report.flush_running()
 
 

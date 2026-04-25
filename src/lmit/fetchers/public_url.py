@@ -80,6 +80,7 @@ class PublicUrlFetcher:
                     f"url={url} from_stage=scrapling_static "
                     f"upgrade=scrapling_dynamic reason={reason}"
                 )
+                self._count_quality_retry(reason)
                 dynamic_result = self._try_stage(
                     "scrapling_dynamic",
                     url,
@@ -98,6 +99,7 @@ class PublicUrlFetcher:
             f"url={url} from_stage=scrapling "
             f"upgrade=legacy_markitdown reason={reason}"
         )
+        self._count_quality_retry(reason)
         return self._fetch_legacy_with_quality_upgrade(url)
 
     def _fetch_legacy_with_quality_upgrade(self, url: str) -> tuple[str, str]:
@@ -135,6 +137,7 @@ class PublicUrlFetcher:
             f"url={url} from_stage=legacy_markitdown "
             f"upgrade=legacy_playwright_html reason={quality}"
         )
+        self._count_quality_retry(quality)
         try:
             return self._fetch_browser_stage(url)
         except Exception as fallback_exc:
@@ -235,6 +238,7 @@ class PublicUrlFetcher:
         return None
 
     def _log_stage_success(self, stage_name: str, url: str, text: str | None) -> None:
+        self._increment_success_counter(stage_name)
         self._log(
             "[PUBLIC-FETCH-STAGE] "
             f"url={url} stage={stage_name} status=ok "
@@ -248,6 +252,7 @@ class PublicUrlFetcher:
         text: str | None,
         quality: str,
     ) -> None:
+        self._increment_quality_counter(quality)
         self._log(
             "[PUBLIC-FETCH-STAGE] "
             f"url={url} stage={stage_name} status=needs_upgrade "
@@ -257,6 +262,35 @@ class PublicUrlFetcher:
     def _log(self, message: str) -> None:
         if self.report is not None:
             self.report.log(message)
+
+    def _increment_success_counter(self, stage_name: str) -> None:
+        counter_name = {
+            "scrapling_static": "public_url_scrapling_static_success",
+            "scrapling_dynamic": "public_url_scrapling_dynamic_success",
+            "legacy_markitdown": "public_url_markitdown_success",
+            "legacy_playwright_html": "public_url_playwright_success",
+        }.get(stage_name)
+        if counter_name is not None:
+            self._increment_report_stat(counter_name)
+
+    def _increment_quality_counter(self, quality: str) -> None:
+        if quality == "blank":
+            self._increment_report_stat("public_url_blank")
+        elif quality == "blocked":
+            self._increment_report_stat("public_url_blocked")
+
+    def _count_quality_retry(self, reason: str | None) -> None:
+        if reason in {"blank", "blocked", "too_short"}:
+            self._increment_report_stat("public_url_quality_retry")
+
+    def _increment_report_stat(self, stat_name: str) -> None:
+        if self.report is None:
+            return
+        current = getattr(self.report.stats, stat_name, None)
+        if current is None:
+            return
+        setattr(self.report.stats, stat_name, current + 1)
+        self.report.flush_running()
 
 
 class _StageResult:
