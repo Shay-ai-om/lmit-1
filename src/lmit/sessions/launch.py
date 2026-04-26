@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import monotonic
 import sys
+from urllib.request import urlopen
 
 from lmit.config import SessionSiteConfig
 
@@ -21,18 +23,26 @@ Object.defineProperty(navigator, 'plugins', {
 
 
 def browser_launch_options(site: SessionSiteConfig, *, headless: bool) -> dict:
+    return generic_browser_launch_options(channel=site.browser_channel, headless=headless)
+
+
+def apply_stealth(context) -> None:
+    context.add_init_script(STEALTH_INIT_SCRIPT)
+
+
+def generic_browser_launch_options(
+    *,
+    channel: str | None,
+    headless: bool,
+) -> dict:
     options = {
         "headless": headless,
         "ignore_default_args": ["--enable-automation"],
         "args": ["--disable-blink-features=AutomationControlled"],
     }
-    if site.browser_channel:
-        options["channel"] = site.browser_channel
+    if channel:
+        options["channel"] = channel
     return options
-
-
-def apply_stealth(context) -> None:
-    context.add_init_script(STEALTH_INIT_SCRIPT)
 
 
 def login_uses_cdp(site: SessionSiteConfig) -> bool:
@@ -53,18 +63,34 @@ def browser_executable_for_site(site: SessionSiteConfig) -> Path:
     if site.browser_executable_path is not None:
         return site.browser_executable_path
 
+    return browser_executable_for_channel(
+        channel=site.browser_channel,
+        executable_path=None,
+        label=site.name,
+    )
+
+
+def browser_executable_for_channel(
+    *,
+    channel: str | None,
+    executable_path: Path | None,
+    label: str,
+) -> Path:
+    if executable_path is not None:
+        return executable_path
+
     if sys.platform != "win32":
         raise RuntimeError(
-            f"{site.name}: browser_executable_path must be configured outside Windows"
+            f"{label}: browser_executable_path must be configured outside Windows"
         )
 
-    candidates = windows_browser_candidates(site.browser_channel)
+    candidates = windows_browser_candidates(channel)
     for candidate in candidates:
         if candidate.exists():
             return candidate
 
     raise RuntimeError(
-        f"{site.name}: unable to find a browser executable for channel={site.browser_channel!r}. "
+        f"{label}: unable to find a browser executable for channel={channel!r}. "
         "Set browser_executable_path in the session config."
     )
 
@@ -92,3 +118,14 @@ def windows_browser_candidates(channel: str | None) -> list[Path]:
             Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         ]
     return []
+
+
+def wait_for_cdp_endpoint(endpoint: str, *, timeout_seconds: float) -> None:
+    deadline = monotonic() + timeout_seconds
+    while monotonic() < deadline:
+        try:
+            with urlopen(f"{endpoint}/json/version", timeout=2):
+                return
+        except Exception:
+            pass
+    raise TimeoutError(f"timed out waiting for CDP endpoint: {endpoint}")

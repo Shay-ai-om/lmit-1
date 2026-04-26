@@ -79,6 +79,14 @@ scrapling_block_ads = true
 request_timeout_seconds = 30
 navigation_timeout_ms = 45000
 min_meaningful_chars = 200
+# Optional: use a branded browser for Playwright fallback instead of bundled Chromium.
+# browser_channel = "chrome"
+#
+# Optional: attach public-URL browser fallback to a real browser you launched
+# with a CDP port. This can help with sites that treat plain automation traffic
+# differently from a normal browser session.
+# browser_connect_over_cdp = true
+# browser_cdp_port = 9225
 # Set provider = "legacy" to roll public URLs back to the older MarkItDown-first flow.
 
 [polling]

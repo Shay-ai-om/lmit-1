@@ -89,6 +89,10 @@ class PublicFetchConfig:
     request_timeout_seconds: int = 30
     navigation_timeout_ms: int = 45000
     min_meaningful_chars: int = 200
+    browser_channel: str | None = None
+    browser_executable_path: Path | None = None
+    browser_connect_over_cdp: bool = False
+    browser_cdp_port: int | None = None
 
 
 @dataclass(frozen=True)
@@ -339,6 +343,23 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
                 "min_meaningful_chars",
                 cfg.public_fetch.min_meaningful_chars,
             )
+        ),
+        browser_channel=_optional_string(
+            public_fetch_data.get("browser_channel", cfg.public_fetch.browser_channel)
+        ),
+        browser_executable_path=_resolve_optional_path(
+            public_fetch_data.get("browser_executable_path"),
+            default=base / "public-browser.exe",
+            base=base,
+        ),
+        browser_connect_over_cdp=bool(
+            public_fetch_data.get(
+                "browser_connect_over_cdp",
+                cfg.public_fetch.browser_connect_over_cdp,
+            )
+        ),
+        browser_cdp_port=_optional_int(
+            public_fetch_data.get("browser_cdp_port", cfg.public_fetch.browser_cdp_port)
         ),
     )
 

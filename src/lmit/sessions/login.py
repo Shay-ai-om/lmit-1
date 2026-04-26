@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from time import monotonic
-from urllib.request import urlopen
 import subprocess
 from typing import Callable
 
@@ -16,6 +15,7 @@ from lmit.sessions.launch import (
     login_profile_dir,
     login_uses_cdp,
     login_uses_persistent_context,
+    wait_for_cdp_endpoint,
 )
 from lmit.sessions.strategies.facebook import is_facebook_site
 
@@ -137,7 +137,7 @@ def _capture_session_state_via_cdp(
 
     browser = None
     try:
-        _wait_for_cdp(endpoint, deadline)
+        wait_for_cdp_endpoint(endpoint, timeout_seconds=max(1, deadline - monotonic()))
         confirm_login(site, report)
         browser = playwright.chromium.connect_over_cdp(endpoint)
         if not browser.contexts:
@@ -153,18 +153,6 @@ def _capture_session_state_via_cdp(
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
-
-
-def _wait_for_cdp(endpoint: str, deadline: float) -> None:
-    while monotonic() < deadline:
-        try:
-            with urlopen(f"{endpoint}/json/version", timeout=2):
-                return
-        except Exception:
-            pass
-    raise TimeoutError(f"timed out waiting for CDP endpoint: {endpoint}")
-
-
 def wait_for_login_confirmation(site: SessionSiteConfig, report: ConversionReport) -> None:
     report.log(
         "[LOGIN-WAITING] complete login in the browser, then press Enter "

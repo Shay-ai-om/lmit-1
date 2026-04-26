@@ -25,6 +25,9 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
                 "request_timeout_seconds = 12",
                 "navigation_timeout_ms = 15000",
                 "min_meaningful_chars = 123",
+                'browser_channel = "chrome"',
+                "browser_connect_over_cdp = true",
+                "browser_cdp_port = 9333",
             ]
         ),
         encoding="utf-8",
@@ -41,4 +44,8 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
         request_timeout_seconds=12,
         navigation_timeout_ms=15000,
         min_meaningful_chars=123,
+        browser_channel="chrome",
+        browser_executable_path=None,
+        browser_connect_over_cdp=True,
+        browser_cdp_port=9333,
     )
