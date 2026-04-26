@@ -17,6 +17,7 @@ from lmit.autostart import (
     is_autostart_supported,
     set_autostart,
 )
+from lmit.cancellation import ConversionCancelled
 from lmit.gui_settings import (
     GuiSettings,
     build_app_config_from_gui,
@@ -91,6 +92,7 @@ class RawMarkdownGui:
         self.output_dir_var = tk.StringVar(value=self.settings.output_dir)
         self.work_dir_var = tk.StringVar(value=self.settings.work_dir)
         self.report_dir_var = tk.StringVar(value=self.settings.report_dir)
+        self.public_fetch_mode_var = tk.StringVar(value=self.settings.public_fetch_mode)
         self.interval_var = tk.IntVar(value=self.settings.interval_seconds)
         self.stable_var = tk.IntVar(value=self.settings.stable_seconds)
         self.fetch_urls_var = tk.BooleanVar(value=self.settings.fetch_urls)
@@ -188,6 +190,17 @@ class RawMarkdownGui:
             width=10,
         ).grid(row=1, column=1, sticky="w", padx=10, pady=4)
 
+        ttk.Label(options_frame, text="Public URL mode").grid(
+            row=2, column=0, sticky="w", padx=10, pady=4
+        )
+        ttk.Combobox(
+            options_frame,
+            textvariable=self.public_fetch_mode_var,
+            state="readonly",
+            values=("auto", "legacy"),
+            width=12,
+        ).grid(row=2, column=1, sticky="w", padx=10, pady=4)
+
         checks = [
             ("抓取文字檔中的 link content", self.fetch_urls_var),
             ("跳過未變更檔案", self.skip_unchanged_var),
@@ -196,13 +209,13 @@ class RawMarkdownGui:
             ("開啟 GUI 後自動開始監控", self.launch_monitor_var),
             ("Windows 開機自啟並開始監控", self.autostart_var),
         ]
-        for offset, (label, variable) in enumerate(checks, start=2):
+        for offset, (label, variable) in enumerate(checks, start=3):
             ttk.Checkbutton(options_frame, text=label, variable=variable).grid(
                 row=offset, column=0, columnspan=2, sticky="w", padx=10, pady=3
             )
 
         status_frame = ttk.LabelFrame(options_frame, text="執行狀態")
-        status_frame.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 8))
+        status_frame.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 8))
         status_frame.columnconfigure(1, weight=1)
         self._status_row(status_frame, 0, "最後執行", self.last_run_var)
         self._status_row(status_frame, 1, "最後產出 Markdown", self.last_output_var)
@@ -222,7 +235,7 @@ class RawMarkdownGui:
         self.run_button.grid(row=0, column=1, padx=6)
         self.start_button = ttk.Button(buttons, text="開始監控", command=self.start_monitor)
         self.start_button.grid(row=0, column=2, padx=6)
-        self.stop_button = ttk.Button(buttons, text="停止監控", command=self.stop_monitor)
+        self.stop_button = ttk.Button(buttons, text="停止 / 中止", command=self.stop_monitor)
         self.stop_button.grid(row=0, column=3, padx=6)
         ttk.Button(buttons, text="開啟輸出資料夾", command=self.open_output_dir).grid(
             row=0, column=4, padx=6
@@ -345,7 +358,7 @@ class RawMarkdownGui:
             return
         self.stop_event.set()
         self.status_var.set("正在停止")
-        self._append_log("已要求停止監控，若正在轉換會等本輪完成")
+        self._append_log("已送出停止要求，會在下一個安全中斷點停止目前這輪執行。")
 
     def open_output_dir(self) -> None:
         try:
@@ -408,7 +421,11 @@ class RawMarkdownGui:
         code = 1
         try:
             with redirect_stdout(writer), redirect_stderr(writer):
-                code = run_convert(cfg, capture_session=self._capture_session_from_gui)
+                code = run_convert(
+                    cfg,
+                    capture_session=self._capture_session_from_gui,
+                    cancel_check=self._raise_if_cancelled,
+                )
         except Exception:
             writer.flush()
             self.queue.put(("log", traceback.format_exc().rstrip()))
@@ -433,7 +450,10 @@ class RawMarkdownGui:
             next_settings.last_report_path = str(report.path)
         save_gui_settings(next_settings, self.settings_path, self.cwd)
 
-        summary = f"本輪完成：exit={code}, 新產出/部分產出={produced}"
+        if code == 130:
+            summary = f"本輪已中止：exit={code}, 已產出/部分產出={produced}"
+        else:
+            summary = f"本輪完成：exit={code}, 新產出/部分產出={produced}"
         self.queue.put(("log", summary))
         self.queue.put(("settings", next_settings))
         return next_settings
@@ -475,6 +495,7 @@ class RawMarkdownGui:
             output_dir=self.output_dir_var.get().strip(),
             work_dir=self.work_dir_var.get().strip(),
             report_dir=self.report_dir_var.get().strip(),
+            public_fetch_mode=self.public_fetch_mode_var.get().strip() or "auto",
             interval_seconds=interval,
             stable_seconds=stable,
             fetch_urls=bool(self.fetch_urls_var.get()),
@@ -552,6 +573,10 @@ class RawMarkdownGui:
         request.done_event.set()
         if self.busy:
             self.status_var.set("執行轉換中")
+
+    def _raise_if_cancelled(self) -> None:
+        if self.stop_event.is_set():
+            raise ConversionCancelled("GUI stop requested")
 
 
 def current_timestamp() -> str:

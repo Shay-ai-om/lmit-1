@@ -31,6 +31,13 @@ class ConversionStats:
     url_fetch_failed: int = 0
     session_url_fetch_success: int = 0
     session_url_fetch_failed: int = 0
+    public_url_scrapling_static_success: int = 0
+    public_url_scrapling_dynamic_success: int = 0
+    public_url_markitdown_success: int = 0
+    public_url_playwright_success: int = 0
+    public_url_quality_retry: int = 0
+    public_url_blocked: int = 0
+    public_url_blank: int = 0
 
 
 @dataclass
@@ -153,6 +160,13 @@ SUMMARY_STATS = [
     "url_fetch_failed",
     "session_url_fetch_success",
     "session_url_fetch_failed",
+    "public_url_scrapling_static_success",
+    "public_url_scrapling_dynamic_success",
+    "public_url_markitdown_success",
+    "public_url_playwright_success",
+    "public_url_quality_retry",
+    "public_url_blocked",
+    "public_url_blank",
 ]
 
 

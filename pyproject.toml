@@ -19,6 +19,9 @@ documents = [
 full = [
   "markitdown[all]>=0.1.5",
 ]
+scrapling = [
+  "scrapling[fetchers]>=0.4.7",
+]
 session = [
   "playwright>=1.51",
 ]

@@ -18,6 +18,7 @@ def test_gui_settings_round_trip(tmp_path: Path):
         output_dir=str(tmp_path / "raw"),
         work_dir=str(tmp_path / "work"),
         report_dir=str(tmp_path / "reports"),
+        public_fetch_mode="legacy",
         interval_seconds=45,
         stable_seconds=7,
         fetch_urls=True,
@@ -36,6 +37,7 @@ def test_gui_settings_round_trip(tmp_path: Path):
 
     assert loaded.input_dirs == settings.input_dirs
     assert loaded.interval_seconds == 45
+    assert loaded.public_fetch_mode == "legacy"
     assert loaded.last_markdown_output_at == "2026-04-23 10:11:12 CST"
 
 
@@ -48,6 +50,7 @@ def test_build_app_config_from_gui_applies_raw_pipeline_overrides(tmp_path: Path
         output_dir=str(tmp_path / "output" / "raw"),
         work_dir=str(tmp_path / "work"),
         report_dir=str(tmp_path / "reports"),
+        public_fetch_mode="legacy",
         interval_seconds=30,
         stable_seconds=5,
         fetch_urls=False,
@@ -65,6 +68,7 @@ def test_build_app_config_from_gui_applies_raw_pipeline_overrides(tmp_path: Path
     assert cfg.paths.report_dir == (tmp_path / "reports").resolve()
     assert cfg.polling.interval_seconds == 30
     assert cfg.polling.stable_seconds == 5
+    assert cfg.public_fetch.provider == "legacy"
     assert cfg.conversion.fetch_urls is False
     assert cfg.conversion.skip_unchanged is False
     assert cfg.conversion.overwrite is True

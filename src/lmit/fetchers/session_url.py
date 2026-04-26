@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import monotonic
 from time import sleep
 from typing import Callable
 
+from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import SessionSiteConfig
 from lmit.converters.markitdown_adapter import MarkItDownAdapter
 from lmit.reports import ConversionReport
@@ -28,6 +30,7 @@ class SessionUrlFetcher:
         provider: BrowserProvider | None = None,
         capture_session: CaptureSession = capture_session_state,
         playwright_api: tuple[type[Exception], type[Exception], object] | None = None,
+        cancel_check: CancelCheck = noop_cancel_check,
     ):
         self.adapter = adapter
         self.work_dir = work_dir
@@ -39,12 +42,15 @@ class SessionUrlFetcher:
         )
         self.capture_session = capture_session
         self.playwright_api = playwright_api
+        self.cancel_check = cancel_check
 
     def fetch(self, url: str, site: SessionSiteConfig) -> str:
+        self.cancel_check()
         self.report.log(f"[SESSION-URL-FETCH-START] site={site.name} url={url}")
         playwright_error, playwright_timeout_error, sync_playwright = self._load_playwright_api()
 
         if not site.state_file.exists():
+            self.cancel_check()
             self.capture_session(site, self.report)
 
         try:
@@ -57,6 +63,7 @@ class SessionUrlFetcher:
             )
         except SessionLoginRequired as exc:
             self.report.log(f"[SESSION-EXPIRED] {site.name}: {exc}")
+            self.cancel_check()
             self.capture_session(site, self.report)
             return self._fetch_with_retries(
                 url,
@@ -93,6 +100,7 @@ class SessionUrlFetcher:
         last_exc: Exception | None = None
         retry_errors = (playwright_error, playwright_timeout_error, TimeoutError)
         for attempt in range(1, attempts + 1):
+            self.cancel_check()
             try:
                 result = self.provider.fetch_once(
                     url,
@@ -115,6 +123,15 @@ class SessionUrlFetcher:
                     f"[SESSION-RETRY] {site.name} {attempt}/{attempts - 1} "
                     f"provider={self.provider.name} for {url}: {exc!r}"
                 )
-                sleep(max(0, site.retry_backoff_ms) / 1000 * attempt)
+                self._sleep_with_cancel(max(0, site.retry_backoff_ms) / 1000 * attempt)
         assert last_exc is not None
         raise last_exc
+
+    def _sleep_with_cancel(self, seconds: float) -> None:
+        deadline = monotonic() + max(0.0, seconds)
+        while True:
+            self.cancel_check()
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                return
+            sleep(min(0.1, remaining))

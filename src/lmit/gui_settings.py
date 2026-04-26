@@ -18,6 +18,7 @@ class GuiSettings:
     output_dir: str
     work_dir: str
     report_dir: str
+    public_fetch_mode: str
     interval_seconds: int
     stable_seconds: int
     fetch_urls: bool
@@ -51,6 +52,7 @@ def default_gui_settings(cwd: Path | None = None) -> GuiSettings:
         output_dir=str(cfg.paths.output_dir),
         work_dir=str(cfg.paths.work_dir),
         report_dir=str(cfg.paths.report_dir),
+        public_fetch_mode=cfg.public_fetch.provider,
         interval_seconds=cfg.polling.interval_seconds,
         stable_seconds=cfg.polling.stable_seconds,
         fetch_urls=cfg.conversion.fetch_urls,
@@ -122,11 +124,16 @@ def build_app_config_from_gui(settings: GuiSettings, cwd: Path | None = None) ->
         cfg.output_naming,
         enrich_filenames=bool(settings.enrich_filenames),
     )
+    public_fetch = replace(
+        cfg.public_fetch,
+        provider=_normalize_public_fetch_mode(settings.public_fetch_mode, cfg.public_fetch.provider),
+    )
     return replace(
         cfg,
         paths=paths,
         polling=polling,
         conversion=conversion,
+        public_fetch=public_fetch,
         output_naming=output_naming,
     )
 
@@ -142,6 +149,10 @@ def _coerce_settings(payload: dict[str, Any], defaults: GuiSettings) -> GuiSetti
         output_dir=str(payload.get("output_dir") or defaults.output_dir),
         work_dir=str(payload.get("work_dir") or defaults.work_dir),
         report_dir=str(payload.get("report_dir") or defaults.report_dir),
+        public_fetch_mode=_normalize_public_fetch_mode(
+            payload.get("public_fetch_mode"),
+            defaults.public_fetch_mode,
+        ),
         interval_seconds=max(1, _coerce_int(payload.get("interval_seconds"), defaults.interval_seconds)),
         stable_seconds=max(0, _coerce_int(payload.get("stable_seconds"), defaults.stable_seconds)),
         fetch_urls=bool(payload.get("fetch_urls")),
@@ -175,6 +186,13 @@ def _optional_path(value: str | None, base: Path) -> Path | None:
         return None
     path = _resolve_user_path(value, base)
     return path if path.exists() else None
+
+
+def _normalize_public_fetch_mode(value: Any, fallback: str) -> str:
+    text = str(value or fallback).strip().lower()
+    if text in {"auto", "legacy"}:
+        return text
+    return str(fallback).strip().lower() or "auto"
 
 
 def _resolve_user_path(value: str, base: Path) -> Path:
