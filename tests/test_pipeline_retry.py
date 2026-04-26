@@ -172,3 +172,23 @@ def test_run_convert_passes_public_fetch_config_to_public_url_fetcher(
     assert code == 0
     assert captured["work_dir"] == cfg.paths.work_dir
     assert captured["public_fetch"] == cfg.public_fetch
+
+
+def test_run_convert_returns_cancel_code_after_first_item(tmp_path: Path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "a.md").write_text("first", encoding="utf-8")
+    (input_dir / "b.md").write_text("second", encoding="utf-8")
+
+    calls = {"count": 0}
+
+    def cancel_check() -> None:
+        calls["count"] += 1
+        if calls["count"] >= 4:
+            raise pipeline.ConversionCancelled("stop now")
+
+    code = run_convert(_cfg(tmp_path), cancel_check=cancel_check)
+
+    assert code == 130
+    assert (tmp_path / "output" / "raw" / "a.md").exists()
+    assert not (tmp_path / "output" / "raw" / "b.md").exists()

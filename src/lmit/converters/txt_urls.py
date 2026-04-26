@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from lmit.cancellation import CancelCheck, ConversionCancelled, noop_cancel_check
 from lmit.fetchers.public_url import PublicUrlFetcher
 from lmit.fetchers.public_url_blocked import is_blocked_public_url_text
 from lmit.fetchers.session_url import SessionUrlFetcher
@@ -18,6 +19,7 @@ class TxtUrlConversionResult:
     markdown: str
     blank_count: int
     failed_count: int
+    cancelled: bool = False
 
 
 def extract_urls(text: str) -> list[str]:
@@ -39,6 +41,7 @@ def convert_txt_with_urls(
     session_fetcher: SessionUrlFetcher,
     session_manager: SessionManager,
     report: ConversionReport,
+    cancel_check: CancelCheck = noop_cancel_check,
 ) -> TxtUrlConversionResult:
     raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
     urls = extract_urls(raw_text)
@@ -69,8 +72,27 @@ def convert_txt_with_urls(
     parts.extend(["", "---", "", "## URL Fetched Content", ""])
     blank_count = 0
     failed_count = 0
+    cancelled = False
 
     for index, url in enumerate(urls, start=1):
+        try:
+            cancel_check()
+        except ConversionCancelled:
+            cancelled = True
+            report.log(f"[CANCELLED] txt url fetch aborted at {url}")
+            parts.extend(
+                [
+                    f"### URL {index}",
+                    "",
+                    f"Source URL: {url}",
+                    "",
+                    "[URL_FETCH_CANCELLED]",
+                    "",
+                    "---",
+                    "",
+                ]
+            )
+            break
         parts.extend([f"### URL {index}", "", f"Source URL: {url}", ""])
         site = session_manager.site_for_url(url)
         try:
@@ -113,6 +135,11 @@ def convert_txt_with_urls(
                 else:
                     _increment_report_stat(report, "session_url_fetch_success")
             parts.extend([text.rstrip(), "", "---", ""])
+        except ConversionCancelled:
+            cancelled = True
+            report.log(f"[CANCELLED] txt url fetch aborted at {url}")
+            parts.extend(["[URL_FETCH_CANCELLED]", "", "---", ""])
+            break
         except Exception as exc:
             if site is None:
                 _increment_report_stat(report, "url_fetch_failed")
@@ -128,6 +155,7 @@ def convert_txt_with_urls(
         "\n".join(parts).rstrip() + "\n",
         blank_count,
         failed_count,
+        cancelled=cancelled,
     )
 
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
+from lmit.cancellation import ConversionCancelled
 from lmit.config import AppConfig
 from lmit.converters.local_file import convert_regular_file
 from lmit.converters.markitdown_adapter import MarkItDownAdapter
@@ -18,7 +21,14 @@ from lmit.sessions.login import capture_session_state
 from lmit.sessions.manager import SessionManager
 
 
-def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int:
+def run_convert(
+    cfg: AppConfig,
+    *,
+    capture_session=capture_session_state,
+    cancel_check: Callable[[], None] | None = None,
+) -> int:
+    if cancel_check is None:
+        cancel_check = lambda: None
     report = ConversionReport()
     cfg.paths.output_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.work_dir.mkdir(parents=True, exist_ok=True)
@@ -84,6 +94,7 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
         work_dir=cfg.paths.work_dir,
         report=report,
         public_fetch=cfg.public_fetch,
+        cancel_check=cancel_check,
     )
     session_manager = SessionManager(cfg)
     session_fetcher = SessionUrlFetcher(
@@ -91,9 +102,16 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
         work_dir=cfg.paths.work_dir,
         report=report,
         capture_session=capture_session,
+        cancel_check=cancel_check,
     )
 
     for scanned in files:
+        cancelled = False
+        try:
+            cancel_check()
+        except ConversionCancelled:
+            report.log("[CANCELLED] conversion aborted before next item")
+            break
         report.log(f"[ITEM-START] {scanned.manifest_key}")
         base_out_path = output_path_for(
             scanned.source_root or cfg.paths.input_dir,
@@ -135,16 +153,19 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
                     session_fetcher=session_fetcher,
                     session_manager=session_manager,
                     report=report,
+                    cancel_check=cancel_check,
                 )
                 text = result.markdown
                 report.stats.blank_output += result.blank_count
-                if result.failed_count:
+                if result.failed_count or result.cancelled:
                     status = "partial"
+                cancelled = result.cancelled
             else:
                 text, blank = convert_regular_file(
                     scanned.path,
                     adapter,
                     blank_note_for_images=cfg.conversion.blank_note_for_images,
+                    cancel_check=cancel_check,
                 )
                 if blank:
                     report.stats.blank_output += 1
@@ -176,6 +197,9 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
             else:
                 report.stats.converted += 1
                 report.log(f"[OK] {scanned.manifest_key} -> {out_path}")
+            if cancelled:
+                report.log(f"[CANCELLED] partial output saved for {scanned.manifest_key}")
+                break
         except Exception as exc:
             classification = classify_error(exc)
             manifest.update(
@@ -199,4 +223,6 @@ def run_convert(cfg: AppConfig, *, capture_session=capture_session_state) -> int
     report.log(f"report_md = {md_path}")
     report.log(f"report_json = {json_path}")
     report.log("=== LMIT convert done ===")
+    if any("[CANCELLED]" in line for line in report.lines):
+        return 130
     return 0 if report.stats.failed == 0 else 1

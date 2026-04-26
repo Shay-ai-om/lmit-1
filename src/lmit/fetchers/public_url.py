@@ -3,6 +3,7 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
+from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import PublicFetchConfig
 from lmit.converters.markitdown_adapter import MarkItDownAdapter
 from lmit.fetchers.npm_registry import fetch_npm_package_markdown, parse_npm_package_url
@@ -28,12 +29,14 @@ class PublicUrlFetcher:
         public_fetch: PublicFetchConfig | None = None,
         scrapling_fetcher: object | None = None,
         navigation_timeout_ms: int | None = None,
+        cancel_check: CancelCheck = noop_cancel_check,
     ):
         self.adapter = adapter
         self.work_dir = work_dir
         self.report = report
         self.public_fetch = public_fetch or PublicFetchConfig()
         self._scrapling_fetcher = scrapling_fetcher
+        self.cancel_check = cancel_check
         self.navigation_timeout_ms = (
             navigation_timeout_ms
             if navigation_timeout_ms is not None
@@ -41,6 +44,7 @@ class PublicUrlFetcher:
         )
 
     def fetch(self, url: str) -> str:
+        self.cancel_check()
         self._log(f"[URL-FETCH-START] {url}")
         npm_package_url = parse_npm_package_url(url)
         if npm_package_url is not None:
@@ -66,6 +70,7 @@ class PublicUrlFetcher:
     def _fetch_with_public_pipeline(self, url: str) -> tuple[str, str]:
         if self.public_fetch.enable_scrapling:
             scrapling_fetcher = self._get_scrapling_fetcher()
+            self.cancel_check()
             static_result = self._try_stage(
                 "scrapling_static",
                 url,
@@ -81,6 +86,7 @@ class PublicUrlFetcher:
                     f"upgrade=scrapling_dynamic reason={reason}"
                 )
                 self._count_quality_retry(reason)
+                self.cancel_check()
                 dynamic_result = self._try_stage(
                     "scrapling_dynamic",
                     url,
@@ -100,9 +106,11 @@ class PublicUrlFetcher:
             f"upgrade=legacy_markitdown reason={reason}"
         )
         self._count_quality_retry(reason)
+        self.cancel_check()
         return self._fetch_legacy_with_quality_upgrade(url)
 
     def _fetch_legacy_with_quality_upgrade(self, url: str) -> tuple[str, str]:
+        self.cancel_check()
         try:
             text = self.adapter.convert_url(url)
         except Exception as original_exc:
@@ -138,6 +146,7 @@ class PublicUrlFetcher:
             f"upgrade=legacy_playwright_html reason={quality}"
         )
         self._count_quality_retry(quality)
+        self.cancel_check()
         try:
             return self._fetch_browser_stage(url)
         except Exception as fallback_exc:
@@ -148,6 +157,7 @@ class PublicUrlFetcher:
             return text, "legacy_markitdown"
 
     def _fetch_legacy(self, url: str) -> tuple[str, str]:
+        self.cancel_check()
         try:
             text = self.adapter.convert_url(url)
             self._log_stage_success("legacy_markitdown", url, text)
@@ -162,6 +172,7 @@ class PublicUrlFetcher:
                 raise original_exc from fallback_exc
 
     def _fetch_browser_stage(self, url: str) -> tuple[str, str]:
+        self.cancel_check()
         text = self._fetch_with_browser(url)
         quality = self._quality_reason(text)
         if quality is None:
@@ -184,6 +195,7 @@ class PublicUrlFetcher:
         temp_html = tmp_dir / f"public_{sha256(url.encode('utf-8')).hexdigest()[:16]}.html"
 
         with sync_playwright() as p:
+            self.cancel_check()
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
@@ -196,6 +208,7 @@ class PublicUrlFetcher:
                 page.wait_for_load_state("networkidle", timeout=15000)
             except PlaywrightTimeoutError:
                 self._log(f"[WARN] networkidle timeout for public URL: {url}")
+            self.cancel_check()
             page.wait_for_timeout(3000)
             temp_html.write_text(page.content(), encoding="utf-8")
             browser.close()

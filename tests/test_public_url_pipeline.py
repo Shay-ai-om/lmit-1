@@ -266,6 +266,221 @@ def test_scrapling_fetcher_ai_targeted_prefers_html_over_markdown():
     assert "Docs Pricing" not in text
 
 
+def test_scrapling_fetcher_ai_targeted_trims_recommended_news_sections():
+    html = """
+    <html>
+      <body>
+        <main>
+          <article>
+            <h1>Major storm makes landfall</h1>
+            <p>The main article lead explains what happened.</p>
+            <p>Officials said residents should avoid coastal roads.</p>
+            <h2>Recommended</h2>
+            <ul>
+              <li>Markets close higher after rally</li>
+              <li>How to prepare for summer outages</li>
+            </ul>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert "Major storm makes landfall" in text
+    assert "Officials said residents should avoid coastal roads." in text
+    assert "Recommended" not in text
+    assert "Markets close higher after rally" not in text
+
+
+def test_scrapling_fetcher_ai_targeted_prefers_jsonld_article_body_for_news_pages():
+    html = """
+    <html>
+      <head>
+        <title>Site title fallback</title>
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "NewsArticle",
+            "headline": "City council approves housing plan",
+            "articleBody": "The city council approved a new housing plan after a three-hour debate. Supporters said the policy could speed up construction near transit."
+          }
+        </script>
+      </head>
+      <body>
+        <main>
+          <article>
+            <p>Short teaser.</p>
+            <section class="related-news">
+              <h2>Related articles</h2>
+              <p>Another story</p>
+            </section>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert "City council approves housing plan" in text
+    assert "The city council approved a new housing plan" in text
+    assert "Related articles" not in text
+    assert "Another story" not in text
+
+
+def test_scrapling_fetcher_ai_targeted_prefers_article_body_container_over_sidebar():
+    html = """
+    <html>
+      <body>
+        <main>
+          <div class="page-shell">
+            <aside class="most-read">
+              <h2>Most read</h2>
+              <p>Celebrity story</p>
+            </aside>
+            <section class="article-body">
+              <h1>Rail operators restore service</h1>
+              <p>Morning service resumed after engineers repaired signaling equipment.</p>
+              <p>Commuters were advised to expect minor delays through noon.</p>
+            </section>
+          </div>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert "Rail operators restore service" in text
+    assert "Morning service resumed after engineers repaired signaling equipment." in text
+    assert "Most read" not in text
+    assert "Celebrity story" not in text
+
+
+def test_scrapling_fetcher_ai_targeted_preserves_paragraph_breaks_and_tail_info():
+    html = """
+    <html>
+      <body>
+        <main>
+          <article>
+            <h1>Global chip demand rebounds ｜ Example News</h1>
+            <p>Semiconductor orders climbed for a third straight quarter.</p>
+            <p>Analysts said automotive and AI demand drove the recovery.</p>
+            <p>責任編輯：王小明</p>
+            <p>圖／Example News 資料照</p>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert text.startswith("Global chip demand rebounds ｜ Example News")
+    assert "\n\nSemiconductor orders climbed for a third straight quarter.\n\n" in text
+    assert "\n\nAnalysts said automotive and AI demand drove the recovery.\n\n" in text
+    assert "尾端資訊" in text
+    assert "- 責任編輯：王小明" in text
+    assert "- 圖片來源：Example News 資料照" in text
+    assert "責任編輯：王小明\n\n圖／Example News 資料照" not in text
+
+
+def test_scrapling_fetcher_ai_targeted_prefers_paragraphed_html_over_flat_jsonld():
+    html = """
+    <html>
+      <head>
+        <title>Site fallback title</title>
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "NewsArticle",
+            "headline": "Economic outlook improves",
+            "articleBody": "Growth improved in the latest quarter. Business investment also rose."
+          }
+        </script>
+      </head>
+      <body>
+        <main>
+          <article>
+            <h1>Economic outlook improves</h1>
+            <p>Growth improved in the latest quarter.</p>
+            <p>Business investment also rose.</p>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert "Economic outlook improves" in text
+    assert "\n\nGrowth improved in the latest quarter.\n\nBusiness investment also rose." in text
+
+
+def test_scrapling_fetcher_ai_targeted_drops_json_blob_and_trailing_tag_cloud():
+    html = """
+    <html>
+      <body>
+        <main>
+          <article>
+            <h1>Policy shift draws reaction</h1>
+            <p>{"id":123,"title":"Policy shift draws reaction","summary":"JSON blob should disappear"}</p>
+            <p>Main article paragraph one.</p>
+            <p>Main article paragraph two.</p>
+            <p>Editor Wang / 編輯</p>
+            <p>市場</p>
+            <p>政策</p>
+            <p>評論</p>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert '{"id":123' not in text
+    assert "Main article paragraph one." in text
+    assert "Main article paragraph two." in text
+    assert "- 編輯：Editor Wang" in text
+    assert "\n\n市場" not in text
+    assert "\n\n政策" not in text
+    assert "\n\n評論" not in text
+
+
+def test_scrapling_fetcher_ai_targeted_splits_inline_image_credit():
+    html = """
+    <html>
+      <body>
+        <main>
+          <article>
+            <h1>Company expands overseas</h1>
+            <p>Executives announced a new regional office.</p>
+            <p>圖／https://example.com/photo.jpg Expansion plans continue next year.</p>
+            <p>責任編輯：陳編輯</p>
+          </article>
+        </main>
+      </body>
+    </html>
+    """
+    fetcher = PublicUrlScraplingFetcher(PublicFetchConfig(scrapling_cleanup="ai_targeted"))
+
+    text = fetcher._normalize_response_text(FakeResponse(html=html))
+
+    assert "Executives announced a new regional office." in text
+    assert "圖片來源：https://example.com/photo.jpg" in text
+    assert "Expansion plans continue next year." in text
+    assert "- 責任編輯：陳編輯" in text
+
+
 def test_scrapling_fetcher_uses_fake_loader_for_dynamic_fetch():
     captured: dict[str, object] = {}
 
