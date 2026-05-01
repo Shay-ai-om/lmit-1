@@ -146,6 +146,150 @@ def test_public_url_pipeline_normalizes_url_before_fetching(tmp_path: Path):
     assert any("[PUBLIC-FETCH-NORMALIZED]" in line for line in report.lines)
 
 
+def test_public_url_pipeline_uses_cdp_first_for_matching_domain(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher()
+
+    fetcher = BrowserOverrideFetcher(
+        adapter,
+        browser_result=LONG_TEXT,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            browser_connect_over_cdp=True,
+            browser_cdp_port=9333,
+            cdp_first_domains=("baidu.com",),
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://tieba.baidu.com/p/9152102978?lp=5027")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == []
+    assert adapter.convert_url_calls == []
+    assert report.stats.public_url_playwright_success == 1
+    assert any("[PUBLIC-FETCH-CDP-FIRST]" in line for line in report.lines)
+    assert any("stage=legacy_playwright_html" in line for line in report.lines)
+
+
+def test_public_url_pipeline_skips_cdp_first_for_non_matching_domain(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(static_result=LONG_TEXT)
+
+    fetcher = BrowserOverrideFetcher(
+        adapter,
+        browser_result=RuntimeError("browser should not be used"),
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            browser_connect_over_cdp=True,
+            cdp_first_domains=("baidu.com",),
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [("static", "https://example.com/article")]
+    assert adapter.convert_url_calls == []
+    assert not any("[PUBLIC-FETCH-CDP-FIRST]" in line for line in report.lines)
+
+
+def test_public_url_pipeline_falls_back_when_cdp_first_is_blocked(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(static_result=LONG_TEXT)
+
+    fetcher = BrowserOverrideFetcher(
+        adapter,
+        browser_result="百度安全验证\n请完成下方验证后继续操作",
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            browser_connect_over_cdp=True,
+            cdp_first_domains=("tieba.baidu.com",),
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://tieba.baidu.com/p/9152102978?lp=5027")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [("static", "https://tieba.baidu.com/p/9152102978?lp=5027")]
+    assert any("[PUBLIC-FETCH-CDP-FIRST-FALLBACK]" in line for line in report.lines)
+
+
+def test_public_cdp_auto_launch_starts_browser_when_endpoint_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+):
+    calls: dict[str, object] = {"waits": 0}
+    executable = tmp_path / "chrome.exe"
+    executable.write_text("", encoding="utf-8")
+
+    def fake_wait_for_cdp_endpoint(endpoint: str, *, timeout_seconds: float) -> None:
+        calls["waits"] = int(calls["waits"]) + 1
+        raise TimeoutError("not ready")
+
+    def fake_browser_executable_for_channel(**kwargs):
+        calls["browser_lookup"] = kwargs
+        return executable
+
+    class FakePopen:
+        def __init__(self, args, **kwargs):
+            calls["popen_args"] = args
+            calls["popen_kwargs"] = kwargs
+
+    monkeypatch.setattr(
+        "lmit.fetchers.public_url.wait_for_cdp_endpoint",
+        fake_wait_for_cdp_endpoint,
+    )
+    monkeypatch.setattr(
+        "lmit.fetchers.public_url.browser_executable_for_channel",
+        fake_browser_executable_for_channel,
+    )
+    monkeypatch.setattr("lmit.fetchers.public_url.subprocess.Popen", FakePopen)
+
+    report = ConversionReport()
+    fetcher = PublicUrlFetcher(
+        DummyAdapter(),
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            browser_connect_over_cdp=True,
+            browser_cdp_port=9333,
+            public_browser_auto_launch=True,
+            public_browser_profile_dir=tmp_path / "profile",
+        ),
+    )
+
+    fetcher._ensure_public_cdp_browser(
+        "http://127.0.0.1:9333",
+        port=9333,
+        url="https://tieba.baidu.com/p/9152102978",
+    )
+
+    assert calls["waits"] == 1
+    assert calls["browser_lookup"] == {
+        "channel": None,
+        "executable_path": None,
+        "label": "public_fetch",
+    }
+    popen_args = calls["popen_args"]
+    assert str(executable) == popen_args[0]
+    assert "--remote-debugging-port=9333" in popen_args
+    assert f"--user-data-dir={tmp_path / 'profile'}" in popen_args
+    assert "https://tieba.baidu.com/p/9152102978" in popen_args
+    assert any("[PUBLIC-BROWSER-LAUNCH]" in line for line in report.lines)
+
+
 def test_public_url_pipeline_upgrades_blank_static_scrapling_to_dynamic(tmp_path: Path):
     report = ConversionReport()
     adapter = DummyAdapter()

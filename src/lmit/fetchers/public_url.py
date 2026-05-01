@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from hashlib import sha256
 from pathlib import Path
+import subprocess
+from urllib.parse import urlparse
 
 from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import PublicFetchConfig
@@ -19,6 +21,7 @@ from lmit.fetchers.public_url_scrapling import PublicUrlScraplingFetcher
 from lmit.reports import ConversionReport
 from lmit.sessions.launch import (
     apply_stealth,
+    browser_executable_for_channel,
     generic_browser_launch_options,
     wait_for_cdp_endpoint,
 )
@@ -80,9 +83,58 @@ class PublicUrlFetcher:
             self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
             return result
 
+        cdp_first_result = self._try_cdp_first(url, fetch_url=fetch_url)
+        if cdp_first_result is not None:
+            result, stage_name = cdp_first_result
+            self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
+            return result
+
         result, stage_name = self._fetch_with_public_pipeline(url, fetch_url=fetch_url)
         self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
         return result
+
+    def _try_cdp_first(self, url: str, *, fetch_url: str) -> tuple[str, str] | None:
+        if not self._should_use_cdp_first(fetch_url):
+            return None
+        if self.work_dir is None:
+            self._log(
+                "[PUBLIC-FETCH-CDP-FIRST-SKIP] "
+                f"url={url} reason=missing_work_dir"
+            )
+            return None
+
+        self._log(f"[PUBLIC-FETCH-CDP-FIRST] url={url}")
+        self.cancel_check()
+        try:
+            text, stage_name = self._fetch_browser_stage(url, fetch_url=fetch_url)
+        except Exception as exc:
+            self._log(
+                "[PUBLIC-FETCH-CDP-FIRST-FAILED] "
+                f"url={url} error={exc!r}"
+            )
+            return None
+
+        quality = self._quality_reason(text)
+        if quality is None:
+            return text, stage_name
+
+        self._log(
+            "[PUBLIC-FETCH-CDP-FIRST-FALLBACK] "
+            f"url={url} reason={quality}"
+        )
+        self._count_quality_retry(quality)
+        return None
+
+    def _should_use_cdp_first(self, url: str) -> bool:
+        if not self.public_fetch.browser_connect_over_cdp:
+            return False
+        domains = self.public_fetch.cdp_first_domains
+        if not domains:
+            return False
+        host = (urlparse(url).hostname or "").lower().rstrip(".")
+        if not host:
+            return False
+        return any(_host_matches_domain(host, domain) for domain in domains)
 
     def _fetch_with_public_pipeline(self, url: str, *, fetch_url: str) -> tuple[str, str]:
         if self.public_fetch.enable_scrapling:
@@ -284,6 +336,7 @@ class PublicUrlFetcher:
         port = self.public_fetch.browser_cdp_port or 9225
         endpoint = f"http://127.0.0.1:{port}"
         self._log(f"[PUBLIC-BROWSER-ATTACH] endpoint={endpoint}")
+        self._ensure_public_cdp_browser(endpoint, port=port, url=url)
         wait_for_cdp_endpoint(
             endpoint,
             timeout_seconds=max(5, self.navigation_timeout_ms / 1000),
@@ -311,6 +364,44 @@ class PublicUrlFetcher:
                 browser.disconnect()
             except AttributeError:
                 pass
+
+    def _ensure_public_cdp_browser(self, endpoint: str, *, port: int, url: str) -> None:
+        if not self.public_fetch.public_browser_auto_launch:
+            return
+        try:
+            wait_for_cdp_endpoint(endpoint, timeout_seconds=1)
+            return
+        except TimeoutError:
+            pass
+
+        profile_dir = (
+            self.public_fetch.public_browser_profile_dir
+            or (self.work_dir / "browser_profiles" / "public")
+        )
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        executable = browser_executable_for_channel(
+            channel=self.public_fetch.browser_channel,
+            executable_path=self.public_fetch.browser_executable_path,
+            label="public_fetch",
+        )
+        self._log(
+            "[PUBLIC-BROWSER-LAUNCH] "
+            f"executable={executable} profile={profile_dir} port={port}"
+        )
+        subprocess.Popen(
+            [
+                str(executable),
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-popup-blocking",
+                "--new-window",
+                url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     def _load_browser_page(
         self,
@@ -458,3 +549,10 @@ class _StageResult:
         self.text = text
         self.quality = quality
         self.failure_reason = failure_reason
+
+
+def _host_matches_domain(host: str, domain: str) -> bool:
+    normalized = domain.strip().lower().rstrip(".").lstrip(".")
+    if not normalized:
+        return False
+    return host == normalized or host.endswith(f".{normalized}")

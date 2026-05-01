@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from lmit.fetchers.public_url_blocked import is_blocked_public_url_text as _is_blocked_text
+from lmit.fetchers.public_url_blocked import (
+    is_blocked_public_url_text as _is_blocked_text,
+    is_cloudflare_challenge_public_url_text as _is_cloudflare_challenge_text,
+)
 
 DEFAULT_MIN_MEANINGFUL_CHARS = 200
 
@@ -19,6 +22,12 @@ def is_blocked_public_url_text(text: str | None) -> bool:
     if is_blank_public_url_text(text):
         return False
     return _is_blocked_text(text)
+
+
+def is_cloudflare_challenge_public_url_text(text: str | None) -> bool:
+    if is_blank_public_url_text(text):
+        return False
+    return _is_cloudflare_challenge_text(text)
 
 
 def is_too_short_public_url_text(

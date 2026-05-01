@@ -182,6 +182,32 @@ Public URLs use the new Scrapling-first pipeline when `provider = "auto"`. Sessi
 
 If Scrapling is not installed, that public pipeline falls back automatically to the legacy MarkItDown provider.
 
+For JS-heavy or Cloudflare-like public pages, you can enable Scrapling's
+StealthyFetcher as a later fallback. It is disabled by default because it can
+open a stealth browser and wait longer for challenge pages:
+
+```toml
+[public_fetch]
+provider = "auto"
+enable_scrapling = true
+enable_scrapling_dynamic = true
+enable_scrapling_stealthy = true
+scrapling_stealthy_solve_cloudflare = true
+```
+
+If you only want that higher-cost path for Cloudflare challenge pages, leave
+general stealth mode off and keep Cloudflare auto-detection on:
+
+```toml
+[public_fetch]
+provider = "auto"
+enable_scrapling = true
+enable_scrapling_dynamic = true
+enable_scrapling_stealthy = false
+enable_scrapling_stealthy_on_cloudflare = true
+scrapling_stealthy_solve_cloudflare = true
+```
+
 To roll public URLs back to the older MarkItDown-first flow, set:
 
 ```toml
@@ -207,6 +233,25 @@ Then start Chrome or Edge yourself with remote debugging enabled before running 
 ```
 
 Open the target page in that browser once, confirm it loads normally, then run LMIT. When `browser_connect_over_cdp = true`, the public-URL browser fallback reuses that real browser context instead of launching a fresh Playwright browser.
+
+For domains that should use that already-open browser before Scrapling or
+MarkItDown, add `cdp_first_domains`. Parent domains match subdomains, so
+`baidu.com` also covers `tieba.baidu.com`. LMIT can launch that CDP browser
+itself with a persistent profile, so you do not need to start remote debugging
+by hand:
+
+```toml
+[public_fetch]
+provider = "auto"
+browser_connect_over_cdp = true
+browser_cdp_port = 9225
+public_browser_auto_launch = true
+public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+cdp_first_domains = ["baidu.com"]
+```
+
+When the browser opens for a challenged site, complete the verification in that
+window once. Later runs reuse the same profile and cookies.
 
 For a dry run that preserves links but does not fetch page content:
 

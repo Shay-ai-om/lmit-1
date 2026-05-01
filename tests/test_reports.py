@@ -32,15 +32,25 @@ class DummyAdapter:
 
 
 class DummyScraplingFetcher:
-    def __init__(self, *, static_result: str = LONG_TEXT, dynamic_result: str = LONG_TEXT):
+    def __init__(
+        self,
+        *,
+        static_result: str = LONG_TEXT,
+        dynamic_result: str = LONG_TEXT,
+        stealthy_result: str = LONG_TEXT,
+    ):
         self.static_result = static_result
         self.dynamic_result = dynamic_result
+        self.stealthy_result = stealthy_result
 
     def fetch_static(self, url: str) -> str:
         return self.static_result
 
     def fetch_dynamic(self, url: str) -> str:
         return self.dynamic_result
+
+    def fetch_stealthy(self, url: str) -> str:
+        return self.stealthy_result
 
 
 class BrowserOverrideFetcher(PublicUrlFetcher):
@@ -152,6 +162,7 @@ def test_render_report_summary_includes_public_url_pipeline_counters(tmp_path: P
         stats={
             "public_url_scrapling_static_success": 1,
             "public_url_scrapling_dynamic_success": 2,
+            "public_url_scrapling_stealthy_success": 3,
             "public_url_markitdown_success": 3,
             "public_url_playwright_success": 4,
             "public_url_quality_retry": 5,
@@ -165,6 +176,7 @@ def test_render_report_summary_includes_public_url_pipeline_counters(tmp_path: P
 
     assert "- public_url_scrapling_static_success: 1" in summary
     assert "- public_url_scrapling_dynamic_success: 2" in summary
+    assert "- public_url_scrapling_stealthy_success: 3" in summary
     assert "- public_url_markitdown_success: 3" in summary
     assert "- public_url_playwright_success: 4" in summary
     assert "- public_url_quality_retry: 5" in summary
