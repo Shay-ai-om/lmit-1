@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 
 import pytest
 
+from lmit.cancellation import ConversionCancelled
 from lmit.config import PublicFetchConfig
 from lmit.fetchers.public_url import PublicUrlFetcher
 from lmit.fetchers.public_url_scrapling import PublicUrlScraplingFetcher
@@ -36,9 +38,11 @@ class DummyScraplingFetcher:
         *,
         static_result: str | Exception = LONG_TEXT,
         dynamic_result: str | Exception = LONG_TEXT,
+        stealthy_result: str | Exception = LONG_TEXT,
     ):
         self.static_result = static_result
         self.dynamic_result = dynamic_result
+        self.stealthy_result = stealthy_result
         self.calls: list[tuple[str, str]] = []
 
     def fetch_static(self, url: str) -> str:
@@ -52,6 +56,12 @@ class DummyScraplingFetcher:
         if isinstance(self.dynamic_result, Exception):
             raise self.dynamic_result
         return self.dynamic_result
+
+    def fetch_stealthy(self, url: str) -> str:
+        self.calls.append(("stealthy", url))
+        if isinstance(self.stealthy_result, Exception):
+            raise self.stealthy_result
+        return self.stealthy_result
 
 
 class BrowserOverrideFetcher(PublicUrlFetcher):
@@ -159,6 +169,180 @@ def test_public_url_pipeline_upgrades_blank_static_scrapling_to_dynamic(tmp_path
     assert adapter.convert_url_calls == []
     assert any("quality=blank" in line for line in report.lines)
     assert any("upgrade=scrapling_dynamic" in line for line in report.lines)
+
+
+def test_public_url_scrapling_dynamic_can_cancel_mid_fetch():
+    started = Event()
+    release = Event()
+    cancel_calls = {"count": 0}
+
+    class ControlledScraplingFetcher(PublicUrlScraplingFetcher):
+        def _load_fetchers(self):
+            class FakeStaticFetcher:
+                @classmethod
+                def get(cls, url: str, timeout: int):
+                    return LONG_TEXT
+
+            class FakeDynamicFetcher:
+                @classmethod
+                def fetch(cls, url: str, **kwargs):
+                    started.set()
+                    release.wait(timeout=5)
+                    return LONG_TEXT
+
+            return FakeStaticFetcher, FakeDynamicFetcher
+
+    def cancel_check() -> None:
+        cancel_calls["count"] += 1
+        if started.is_set() and cancel_calls["count"] >= 2:
+            raise ConversionCancelled("stop now")
+
+    fetcher = ControlledScraplingFetcher(
+        PublicFetchConfig(),
+        cancel_check=cancel_check,
+    )
+
+    try:
+        with pytest.raises(ConversionCancelled, match="stop now"):
+            fetcher.fetch_dynamic("https://example.com/article")
+    finally:
+        release.set()
+
+
+def test_public_url_pipeline_upgrades_blocked_dynamic_scrapling_to_stealthy(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(
+        static_result="   ",
+        dynamic_result="Just a moment... checking your browser",
+        stealthy_result=LONG_TEXT,
+    )
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            enable_scrapling_dynamic=True,
+            enable_scrapling_stealthy=True,
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [
+        ("static", "https://example.com/article"),
+        ("dynamic", "https://example.com/article"),
+        ("stealthy", "https://example.com/article"),
+    ]
+    assert adapter.convert_url_calls == []
+    assert report.stats.public_url_scrapling_stealthy_success == 1
+    assert any("from_stage=scrapling_dynamic" in line for line in report.lines)
+    assert any("upgrade=scrapling_stealthy" in line for line in report.lines)
+
+
+def test_public_url_pipeline_auto_upgrades_cloudflare_challenge_to_stealthy(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(
+        static_result="   ",
+        dynamic_result=(
+            "Checking if the site connection is secure\n"
+            "Cloudflare Ray ID: 123456789"
+        ),
+        stealthy_result=LONG_TEXT,
+    )
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            enable_scrapling_dynamic=True,
+            enable_scrapling_stealthy=False,
+            enable_scrapling_stealthy_on_cloudflare=True,
+            scrapling_stealthy_solve_cloudflare=True,
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [
+        ("static", "https://example.com/article"),
+        ("dynamic", "https://example.com/article"),
+        ("stealthy", "https://example.com/article"),
+    ]
+    assert adapter.convert_url_calls == []
+    assert report.stats.public_url_scrapling_stealthy_success == 1
+
+
+def test_public_url_pipeline_does_not_auto_stealthy_for_generic_blocked_text(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter(url_result=LONG_TEXT)
+    scrapling = DummyScraplingFetcher(
+        static_result="   ",
+        dynamic_result="Just a moment... checking your browser",
+        stealthy_result=LONG_TEXT,
+    )
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            enable_scrapling_dynamic=True,
+            enable_scrapling_stealthy=False,
+            enable_scrapling_stealthy_on_cloudflare=True,
+            scrapling_stealthy_solve_cloudflare=True,
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [
+        ("static", "https://example.com/article"),
+        ("dynamic", "https://example.com/article"),
+    ]
+    assert adapter.convert_url_calls == ["https://example.com/article"]
+    assert not any("upgrade=scrapling_stealthy" in line for line in report.lines)
+
+
+def test_public_url_pipeline_can_use_stealthy_when_dynamic_is_disabled(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(static_result="short", stealthy_result=LONG_TEXT)
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            enable_scrapling_dynamic=False,
+            enable_scrapling_stealthy=True,
+        ),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == [
+        ("static", "https://example.com/article"),
+        ("stealthy", "https://example.com/article"),
+    ]
+    assert adapter.convert_url_calls == []
+    assert any("from_stage=scrapling_static" in line for line in report.lines)
+    assert any("upgrade=scrapling_stealthy" in line for line in report.lines)
 
 
 def test_public_url_pipeline_falls_back_to_legacy_after_scrapling_failure(tmp_path: Path):
@@ -573,6 +757,40 @@ def test_scrapling_fetcher_uses_fake_loader_for_dynamic_fetch():
     assert captured["dynamic_kwargs"]["headless"] is True
     assert captured["dynamic_kwargs"]["disable_resources"] is True
     assert "doubleclick.net" in captured["dynamic_kwargs"]["blocked_domains"]
+
+
+def test_scrapling_fetcher_uses_stealthy_fetcher_with_cloudflare_options():
+    captured: dict[str, object] = {}
+
+    class FakeStealthyFetcher:
+        @staticmethod
+        def fetch(url: str, **kwargs):
+            captured["stealthy_url"] = url
+            captured["stealthy_kwargs"] = kwargs
+            return FakeResponse(html="<main>stealthy text</main>")
+
+    fetcher = PublicUrlScraplingFetcher(
+        PublicFetchConfig(
+            scrapling_cleanup="basic",
+            scrapling_block_ads=True,
+            navigation_timeout_ms=12345,
+            scrapling_stealthy_solve_cloudflare=True,
+        )
+    )
+    fetcher._load_stealthy_fetcher = lambda: FakeStealthyFetcher
+
+    result = fetcher.fetch_stealthy("https://example.com/protected")
+
+    assert result == "stealthy text"
+    assert captured["stealthy_url"] == "https://example.com/protected"
+    assert captured["stealthy_kwargs"]["timeout"] == 60000
+    assert captured["stealthy_kwargs"]["network_idle"] is True
+    assert captured["stealthy_kwargs"]["headless"] is True
+    assert captured["stealthy_kwargs"]["block_webrtc"] is True
+    assert captured["stealthy_kwargs"]["hide_canvas"] is True
+    assert captured["stealthy_kwargs"]["solve_cloudflare"] is True
+    assert captured["stealthy_kwargs"]["block_ads"] is True
+    assert "doubleclick.net" in captured["stealthy_kwargs"]["blocked_domains"]
 
 
 def test_public_url_pipeline_auto_path_preserves_original_legacy_exception(tmp_path: Path):

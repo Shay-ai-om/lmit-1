@@ -12,6 +12,7 @@ from lmit.fetchers.public_url_quality import (
     count_meaningful_visible_chars,
     is_blank_public_url_text,
     is_blocked_public_url_text,
+    is_cloudflare_challenge_public_url_text,
     is_too_short_public_url_text,
 )
 from lmit.fetchers.public_url_scrapling import PublicUrlScraplingFetcher
@@ -70,7 +71,9 @@ class PublicUrlFetcher:
             "[PUBLIC-FETCH-PROVIDER] "
             f"url={url} provider={provider} "
             f"scrapling={self.public_fetch.enable_scrapling} "
-            f"dynamic={self.public_fetch.enable_scrapling_dynamic}"
+            f"dynamic={self.public_fetch.enable_scrapling_dynamic} "
+            f"stealthy={self.public_fetch.enable_scrapling_stealthy} "
+            f"stealthy_cloudflare={self.public_fetch.enable_scrapling_stealthy_on_cloudflare}"
         )
         if provider == "legacy":
             result, stage_name = self._fetch_legacy(url, fetch_url=fetch_url)
@@ -92,6 +95,7 @@ class PublicUrlFetcher:
             )
             if static_result.text is not None and static_result.quality is None:
                 return static_result.text, "scrapling_static"
+            dynamic_result: _StageResult | None = None
             if self.public_fetch.enable_scrapling_dynamic:
                 reason = static_result.quality or static_result.failure_reason or "needed"
                 self._log(
@@ -109,8 +113,27 @@ class PublicUrlFetcher:
                 if dynamic_result.text is not None and dynamic_result.quality is None:
                     return dynamic_result.text, "scrapling_dynamic"
                 reason = dynamic_result.quality or dynamic_result.failure_reason or "needed"
+                from_stage = "scrapling_dynamic"
             else:
                 reason = static_result.quality or static_result.failure_reason or "needed"
+                from_stage = "scrapling_static"
+
+            if self._should_try_stealthy(reason, static_result, dynamic_result):
+                self._log(
+                    "[PUBLIC-FETCH-UPGRADE] "
+                    f"url={url} from_stage={from_stage} "
+                    f"upgrade=scrapling_stealthy reason={reason}"
+                )
+                self._count_quality_retry(reason)
+                self.cancel_check()
+                stealthy_result = self._try_stage(
+                    "scrapling_stealthy",
+                    url,
+                    lambda _: scrapling_fetcher.fetch_stealthy(fetch_url),
+                )
+                if stealthy_result.text is not None and stealthy_result.quality is None:
+                    return stealthy_result.text, "scrapling_stealthy"
+                reason = stealthy_result.quality or stealthy_result.failure_reason or "needed"
         else:
             reason = "scrapling_disabled"
 
@@ -310,7 +333,10 @@ class PublicUrlFetcher:
 
     def _get_scrapling_fetcher(self):
         if self._scrapling_fetcher is None:
-            self._scrapling_fetcher = PublicUrlScraplingFetcher(self.public_fetch)
+            self._scrapling_fetcher = PublicUrlScraplingFetcher(
+                self.public_fetch,
+                cancel_check=self.cancel_check,
+            )
         return self._scrapling_fetcher
 
     def _try_stage(self, stage_name: str, url: str, fetcher) -> _StageResult:
@@ -343,6 +369,27 @@ class PublicUrlFetcher:
             return "too_short"
         return None
 
+    def _should_try_stealthy(
+        self,
+        reason: str | None,
+        static_result: _StageResult,
+        dynamic_result: _StageResult | None,
+    ) -> bool:
+        if self.public_fetch.enable_scrapling_stealthy:
+            return True
+        if (
+            not self.public_fetch.enable_scrapling_stealthy_on_cloudflare
+            or not self.public_fetch.scrapling_stealthy_solve_cloudflare
+        ):
+            return False
+        if reason != "blocked":
+            return False
+        return any(
+            is_cloudflare_challenge_public_url_text(result.text)
+            for result in (dynamic_result, static_result)
+            if result is not None
+        )
+
     def _log_stage_success(self, stage_name: str, url: str, text: str | None) -> None:
         self._increment_success_counter(stage_name)
         self._log(
@@ -373,6 +420,7 @@ class PublicUrlFetcher:
         counter_name = {
             "scrapling_static": "public_url_scrapling_static_success",
             "scrapling_dynamic": "public_url_scrapling_dynamic_success",
+            "scrapling_stealthy": "public_url_scrapling_stealthy_success",
             "legacy_markitdown": "public_url_markitdown_success",
             "legacy_playwright_html": "public_url_playwright_success",
         }.get(stage_name)

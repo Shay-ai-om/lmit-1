@@ -3,7 +3,10 @@ from __future__ import annotations
 from html import unescape
 import json
 import re
+from queue import Empty, Queue
+from threading import Thread
 
+from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import PublicFetchConfig
 
 
@@ -129,8 +132,14 @@ _AD_BLOCKED_DOMAINS = {
 
 
 class PublicUrlScraplingFetcher:
-    def __init__(self, config: PublicFetchConfig):
+    def __init__(
+        self,
+        config: PublicFetchConfig,
+        *,
+        cancel_check: CancelCheck = noop_cancel_check,
+    ):
         self.config = config
+        self.cancel_check = cancel_check
 
     def fetch_static(self, url: str) -> str:
         fetcher_cls, _ = self._load_fetchers()
@@ -150,13 +159,60 @@ class PublicUrlScraplingFetcher:
         if self.config.scrapling_block_ads:
             kwargs["disable_resources"] = True
             kwargs["blocked_domains"] = set(_AD_BLOCKED_DOMAINS)
-        response = dynamic_fetcher_cls.fetch(url, **kwargs)
+        response = self._run_cancellable_fetch(dynamic_fetcher_cls.fetch, url, **kwargs)
+        return self._normalize_response_text(response)
+
+    def fetch_stealthy(self, url: str) -> str:
+        stealthy_fetcher_cls = self._load_stealthy_fetcher()
+        timeout = self.config.navigation_timeout_ms
+        if self.config.scrapling_stealthy_solve_cloudflare:
+            timeout = max(timeout, 60000)
+        kwargs: dict[str, object] = {
+            "timeout": timeout,
+            "network_idle": True,
+            "headless": True,
+            "block_webrtc": True,
+            "hide_canvas": True,
+            "solve_cloudflare": self.config.scrapling_stealthy_solve_cloudflare,
+        }
+        if self.config.scrapling_block_ads:
+            kwargs["block_ads"] = True
+            kwargs["blocked_domains"] = set(_AD_BLOCKED_DOMAINS)
+        response = self._run_cancellable_fetch(stealthy_fetcher_cls.fetch, url, **kwargs)
         return self._normalize_response_text(response)
 
     def _load_fetchers(self):
         from scrapling.fetchers import DynamicFetcher, Fetcher
 
         return Fetcher, DynamicFetcher
+
+    def _load_stealthy_fetcher(self):
+        from scrapling.fetchers import StealthyFetcher
+
+        return StealthyFetcher
+
+    def _run_cancellable_fetch(self, fetch_fn, url: str, **kwargs):
+        self.cancel_check()
+        result_queue: Queue[tuple[str, object]] = Queue(maxsize=1)
+
+        def runner() -> None:
+            try:
+                result_queue.put(("result", fetch_fn(url, **kwargs)))
+            except BaseException as exc:  # pragma: no cover - exercised through caller
+                result_queue.put(("error", exc))
+
+        thread = Thread(target=runner, daemon=True)
+        thread.start()
+
+        while True:
+            self.cancel_check()
+            try:
+                kind, payload = result_queue.get(timeout=0.2)
+            except Empty:
+                continue
+            if kind == "error":
+                raise payload
+            return payload
 
     def _normalize_response_text(self, response: object) -> str:
         cleanup_mode = self.config.scrapling_cleanup.strip().lower()
