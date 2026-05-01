@@ -66,6 +66,27 @@ blank_note_for_images = true
 # or retryable partial. Equivalent to passing --retry-failed.
 retry_failed = false
 
+[markitdown]
+# MarkItDown can describe images with a configured multimodal LLM provider.
+# OCR still depends on installed MarkItDown plugins, so keep
+# enable_markitdown_plugins = true if you expect OCR-style extraction.
+llm_enabled = false
+llm_provider = "openai_compatible"
+llm_base_url = ""
+llm_model = ""
+llm_api_key_env = "OPENAI_API_KEY"
+llm_prompt = "Write a detailed caption for this image."
+# Supported providers:
+# - openai_compatible -> default base URL: https://api.openai.com/v1
+# - gemini            -> default base URL: https://generativelanguage.googleapis.com/v1beta
+# - lm_studio         -> default base URL: http://127.0.0.1:1234/v1
+# - ollama            -> default base URL: http://127.0.0.1:11434/api
+# Default local ports:
+# - lm_studio         -> 1234
+# - ollama            -> 11434
+#
+# For local providers, llm_api_key_env can be blank.
+
 [public_fetch]
 # Public URLs use the Scrapling-first pipeline when the optional Scrapling
 # extra is installed. If Scrapling is missing, public URLs fall back to the
@@ -79,6 +100,14 @@ scrapling_block_ads = true
 request_timeout_seconds = 30
 navigation_timeout_ms = 45000
 min_meaningful_chars = 200
+# Optional: use a branded browser for Playwright fallback instead of bundled Chromium.
+# browser_channel = "chrome"
+#
+# Optional: attach public-URL browser fallback to a real browser you launched
+# with a CDP port. This can help with sites that treat plain automation traffic
+# differently from a normal browser session.
+# browser_connect_over_cdp = true
+# browser_cdp_port = 9225
 # Set provider = "legacy" to roll public URLs back to the older MarkItDown-first flow.
 
 [polling]

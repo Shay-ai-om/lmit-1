@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from lmit.config import AppConfig, load_config, with_overrides
+from lmit.env import load_default_env
 from lmit.pipeline import run_convert
 from lmit.reports import (
     ConversionReport,
@@ -20,6 +21,7 @@ from lmit.sessions.login import capture_session_state
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    load_default_env()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

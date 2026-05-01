@@ -63,6 +63,17 @@ class BrowserOverrideFetcher(PublicUrlFetcher):
         return self.browser_result
 
 
+class AttachedBrowserOverrideFetcher(PublicUrlFetcher):
+    def __init__(self, *args, browser_result: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.browser_result = browser_result
+        self.attached_urls: list[str] = []
+
+    def _fetch_with_attached_browser(self, playwright, url: str, *, playwright_timeout_error) -> str:
+        self.attached_urls.append(url)
+        return self.browser_result
+
+
 class BrowserFailureFetcher(PublicUrlFetcher):
     def __init__(self, *args, browser_exc: Exception, **kwargs):
         super().__init__(*args, **kwargs)
@@ -101,6 +112,28 @@ def test_public_url_pipeline_uses_static_scrapling_when_quality_is_good(tmp_path
     assert any("provider=auto" in line for line in report.lines)
     assert any("scrapling_static" in line for line in report.lines)
     assert any("[PUBLIC-FETCH-DONE]" in line for line in report.lines)
+
+
+def test_public_url_pipeline_normalizes_url_before_fetching(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter(url_result="legacy markdown")
+    scrapling = DummyScraplingFetcher()
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(provider="legacy"),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch(
+        "https://tieba.baidu.com/p/9152102978?lp=5027&mo_device=1&is_jingpost=0#/"
+    )
+
+    assert result == "legacy markdown"
+    assert adapter.convert_url_calls == ["https://tieba.baidu.com/p/9152102978?lp=5027"]
+    assert any("[PUBLIC-FETCH-NORMALIZED]" in line for line in report.lines)
 
 
 def test_public_url_pipeline_upgrades_blank_static_scrapling_to_dynamic(tmp_path: Path):
@@ -197,6 +230,30 @@ def test_public_url_pipeline_logs_low_quality_browser_fallback(tmp_path: Path):
         "stage=legacy_playwright_html" in line and "status=ok" in line
         for line in report.lines
     )
+
+
+def test_public_url_pipeline_uses_attached_browser_when_public_cdp_is_enabled(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter(url_result=RuntimeError("legacy blocked"))
+
+    fetcher = AttachedBrowserOverrideFetcher(
+        adapter,
+        browser_result=LONG_TEXT,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            provider="auto",
+            enable_scrapling=False,
+            browser_connect_over_cdp=True,
+            browser_cdp_port=9333,
+        ),
+    )
+
+    result = fetcher.fetch("https://example.com/article")
+
+    assert result == LONG_TEXT
+    assert fetcher.attached_urls == ["https://example.com/article"]
+    assert any("stage=legacy_playwright_html" in line and "status=ok" in line for line in report.lines)
 
 
 def test_scrapling_fetcher_basic_cleanup_keeps_common_noise():

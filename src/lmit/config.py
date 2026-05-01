@@ -89,6 +89,20 @@ class PublicFetchConfig:
     request_timeout_seconds: int = 30
     navigation_timeout_ms: int = 45000
     min_meaningful_chars: int = 200
+    browser_channel: str | None = None
+    browser_executable_path: Path | None = None
+    browser_connect_over_cdp: bool = False
+    browser_cdp_port: int | None = None
+
+
+@dataclass(frozen=True)
+class MarkItDownConfig:
+    llm_enabled: bool = False
+    llm_provider: str = "openai_compatible"
+    llm_base_url: str = ""
+    llm_model: str | None = None
+    llm_api_key_env: str = "OPENAI_API_KEY"
+    llm_prompt: str | None = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +174,7 @@ class AppConfig:
     scan: ScanConfig
     conversion: ConversionConfig
     public_fetch: PublicFetchConfig
+    markitdown: MarkItDownConfig
     polling: PollingConfig
     output_naming: OutputNamingConfig
     wiki: WikiConfig
@@ -194,6 +209,7 @@ def default_config(cwd: Path | None = None) -> AppConfig:
             retry_failed=False,
         ),
         public_fetch=PublicFetchConfig(),
+        markitdown=MarkItDownConfig(),
         polling=PollingConfig(enabled=False, interval_seconds=300, stable_seconds=10),
         output_naming=OutputNamingConfig(
             enrich_filenames=False,
@@ -340,6 +356,35 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
                 cfg.public_fetch.min_meaningful_chars,
             )
         ),
+        browser_channel=_optional_string(
+            public_fetch_data.get("browser_channel", cfg.public_fetch.browser_channel)
+        ),
+        browser_executable_path=_resolve_optional_path(
+            public_fetch_data.get("browser_executable_path"),
+            default=base / "public-browser.exe",
+            base=base,
+        ),
+        browser_connect_over_cdp=bool(
+            public_fetch_data.get(
+                "browser_connect_over_cdp",
+                cfg.public_fetch.browser_connect_over_cdp,
+            )
+        ),
+        browser_cdp_port=_optional_int(
+            public_fetch_data.get("browser_cdp_port", cfg.public_fetch.browser_cdp_port)
+        ),
+    )
+
+    markitdown_data = data.get("markitdown", {})
+    markitdown = MarkItDownConfig(
+        llm_enabled=bool(markitdown_data.get("llm_enabled", cfg.markitdown.llm_enabled)),
+        llm_provider=str(markitdown_data.get("llm_provider", cfg.markitdown.llm_provider)),
+        llm_base_url=str(markitdown_data.get("llm_base_url", cfg.markitdown.llm_base_url)),
+        llm_model=_optional_string(markitdown_data.get("llm_model", cfg.markitdown.llm_model)),
+        llm_api_key_env=str(
+            markitdown_data.get("llm_api_key_env", cfg.markitdown.llm_api_key_env)
+        ),
+        llm_prompt=_optional_string(markitdown_data.get("llm_prompt", cfg.markitdown.llm_prompt)),
     )
 
     polling_data = data.get("polling", {})
@@ -444,6 +489,7 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         scan=scan,
         conversion=conversion,
         public_fetch=public_fetch,
+        markitdown=markitdown,
         polling=polling,
         output_naming=output_naming,
         wiki=wiki,

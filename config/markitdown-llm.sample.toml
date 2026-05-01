@@ -1,0 +1,59 @@
+[conversion]
+# Keep this enabled if you want MarkItDown OCR plugins to load.
+enable_markitdown_plugins = true
+
+[markitdown]
+llm_enabled = true
+
+# Supported providers:
+# - openai_compatible
+# - gemini
+# - lm_studio
+# - ollama
+llm_provider = "openai_compatible"
+
+# Leave blank to use the provider default:
+# - openai_compatible -> https://api.openai.com/v1
+# - gemini            -> https://generativelanguage.googleapis.com/v1beta
+# - lm_studio         -> http://127.0.0.1:1234/v1
+# - ollama            -> http://127.0.0.1:11434/api
+llm_base_url = ""
+
+# Examples:
+# - openai_compatible -> gpt-4.1-mini
+# - gemini            -> gemini-2.5-flash
+# - lm_studio         -> qwen2.5-vl-7b-instruct
+# - ollama            -> gemma3:4b
+llm_model = "gpt-4.1-mini"
+
+# Remote providers usually need an API key env var.
+# Local providers can leave this blank.
+llm_api_key_env = "OPENAI_API_KEY"
+
+llm_prompt = "Write a detailed caption for this image."
+
+# Provider examples:
+#
+# [markitdown]
+# llm_enabled = true
+# llm_provider = "gemini"
+# llm_base_url = ""
+# llm_model = "gemini-2.5-flash"
+# llm_api_key_env = "GEMINI_API_KEY"
+# llm_prompt = "Write a detailed caption for this image."
+#
+# [markitdown]
+# llm_enabled = true
+# llm_provider = "lm_studio"
+# llm_base_url = ""
+# llm_model = "qwen2.5-vl-7b-instruct"
+# llm_api_key_env = ""
+# llm_prompt = "Write a detailed caption for this image."
+#
+# [markitdown]
+# llm_enabled = true
+# llm_provider = "ollama"
+# llm_base_url = ""
+# llm_model = "gemma3:4b"
+# llm_api_key_env = ""
+# llm_prompt = "Write a detailed caption for this image."

@@ -26,6 +26,7 @@ fb_markitdown_batch_session_autologin.py
 playwright/.auth/
 
 .env
+.env.local
 *.pem
 *.p12
 *.pfx

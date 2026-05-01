@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Any
 import requests
 
+from lmit.config import MarkItDownConfig
+from lmit.converters.markitdown_llm import build_markitdown_llm_runtime
+
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 ACCEPT_HEADER = "text/markdown, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1"
@@ -32,6 +35,7 @@ class MarkItDownAdapter:
         *,
         enable_plugins: bool = True,
         request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        llm_config: MarkItDownConfig | None = None,
     ):
         try:
             from markitdown import MarkItDown
@@ -39,9 +43,23 @@ class MarkItDownAdapter:
             raise RuntimeError(
                 "MarkItDown is not installed. Install the project dependencies first."
             ) from exc
+        session = build_requests_session(request_timeout_seconds)
+        kwargs: dict[str, Any] = {
+            "enable_plugins": enable_plugins,
+            "requests_session": session,
+        }
+        llm_runtime = build_markitdown_llm_runtime(
+            llm_config or MarkItDownConfig(),
+            session=session,
+            timeout_seconds=request_timeout_seconds,
+        )
+        if llm_runtime is not None:
+            kwargs["llm_client"] = llm_runtime.client
+            kwargs["llm_model"] = llm_runtime.model
+            if llm_runtime.prompt is not None:
+                kwargs["llm_prompt"] = llm_runtime.prompt
         self._md = MarkItDown(
-            enable_plugins=enable_plugins,
-            requests_session=build_requests_session(request_timeout_seconds),
+            **kwargs,
         )
 
     def convert_path(self, path: Path) -> str:
