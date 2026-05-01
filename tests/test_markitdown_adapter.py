@@ -5,12 +5,20 @@ import json
 import sys
 import types
 
+import pytest
 import requests
 
+from lmit.config import MarkItDownConfig
 from lmit.converters.markitdown_adapter import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     MarkItDownAdapter,
     build_requests_session,
+)
+from lmit.converters.markitdown_llm import (
+    DEFAULT_GEMINI_BASE_URL,
+    DEFAULT_LM_STUDIO_BASE_URL,
+    DEFAULT_OLLAMA_BASE_URL,
+    build_markitdown_llm_runtime,
 )
 from lmit.fetchers.public_url import PublicUrlFetcher
 from lmit.reports import ConversionReport, latest_report_path
@@ -58,6 +66,228 @@ def test_markitdown_adapter_passes_timeout_session(monkeypatch):
     assert session.headers["Accept"].startswith("text/markdown")
 
 
+def test_markitdown_adapter_passes_llm_configuration(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+    monkeypatch.setenv("TEST_OPENAI_KEY", "secret-key")
+
+    MarkItDownAdapter(
+        enable_plugins=True,
+        llm_config=MarkItDownConfig(
+            llm_enabled=True,
+            llm_model="gpt-4.1-mini",
+            llm_api_key_env="TEST_OPENAI_KEY",
+            llm_prompt="Describe this image for Markdown.",
+        ),
+    )
+
+    assert captured["enable_plugins"] is True
+    assert captured["llm_model"] == "gpt-4.1-mini"
+    assert captured["llm_prompt"] == "Describe this image for Markdown."
+    assert hasattr(captured["llm_client"], "chat")
+
+
+def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="API key environment variable is empty: MISSING_KEY"):
+        build_markitdown_llm_runtime(
+            MarkItDownConfig(
+                llm_enabled=True,
+                llm_model="gpt-4.1-mini",
+                llm_api_key_env="MISSING_KEY",
+            ),
+            session=requests.Session(),
+            timeout_seconds=30,
+        )
+
+
+def test_build_markitdown_llm_runtime_supports_lm_studio_without_api_key(monkeypatch):
+    monkeypatch.delenv("LM_STUDIO_API_KEY", raising=False)
+
+    runtime = build_markitdown_llm_runtime(
+        MarkItDownConfig(
+            llm_enabled=True,
+            llm_provider="lm_studio",
+            llm_base_url="",
+            llm_model="qwen2.5-vl-7b-instruct",
+            llm_api_key_env="LM_STUDIO_API_KEY",
+        ),
+        session=requests.Session(),
+        timeout_seconds=30,
+    )
+
+    assert runtime is not None
+    assert runtime.model == "qwen2.5-vl-7b-instruct"
+    assert runtime.client._base_url == f"{DEFAULT_LM_STUDIO_BASE_URL}/chat/completions"
+
+
+def test_gemini_client_translates_openai_style_messages(monkeypatch):
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+
+    session = requests.Session()
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {"text": "A cat sitting on a chair."},
+                                ]
+                            }
+                        }
+                    ]
+                }
+
+        return FakeResponse()
+
+    monkeypatch.setattr(session, "post", fake_post)
+
+    runtime = build_markitdown_llm_runtime(
+        MarkItDownConfig(
+            llm_enabled=True,
+            llm_provider="gemini",
+            llm_base_url="",
+            llm_model="gemini-2.5-flash",
+            llm_api_key_env="GEMINI_API_KEY",
+        ),
+        session=session,
+        timeout_seconds=42,
+    )
+
+    response = runtime.client.chat.completions.create(
+        model=runtime.model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Describe this image."},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/png;base64,QUJDRA==",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+
+    assert response.choices[0].message.content == "A cat sitting on a chair."
+    assert captured["url"] == f"{DEFAULT_GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent"
+    assert captured["headers"]["x-goog-api-key"] == "gemini-secret"
+    assert captured["timeout"] == 42
+    assert captured["json"] == {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "Describe this image."},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/png",
+                            "data": "QUJDRA==",
+                        }
+                    },
+                ],
+            }
+        ]
+    }
+
+
+def test_ollama_client_translates_openai_style_messages(monkeypatch):
+    captured: dict[str, object] = {}
+    session = requests.Session()
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "message": {
+                        "content": "This looks like a handwritten receipt.",
+                    }
+                }
+
+        return FakeResponse()
+
+    monkeypatch.setattr(session, "post", fake_post)
+
+    runtime = build_markitdown_llm_runtime(
+        MarkItDownConfig(
+            llm_enabled=True,
+            llm_provider="ollama",
+            llm_base_url="",
+            llm_model="gemma3:4b",
+            llm_api_key_env="",
+        ),
+        session=session,
+        timeout_seconds=17,
+    )
+
+    response = runtime.client.chat.completions.create(
+        model=runtime.model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is in this image?"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/jpeg;base64,ZWZnaA==",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+
+    assert response.choices[0].message.content == "This looks like a handwritten receipt."
+    assert captured["url"] == f"{DEFAULT_OLLAMA_BASE_URL}/chat"
+    assert captured["headers"] == {"Content-Type": "application/json"}
+    assert captured["timeout"] == 17
+    assert captured["json"] == {
+        "model": "gemma3:4b",
+        "messages": [
+            {
+                "role": "user",
+                "content": "What is in this image?",
+                "images": ["ZWZnaA=="],
+            }
+        ],
+        "stream": False,
+    }
+
+
 def test_public_url_browser_fallback_sets_navigation_timeout(tmp_path: Path):
     captured: dict[str, object] = {}
 
@@ -79,19 +309,24 @@ def test_public_url_browser_fallback_sets_navigation_timeout(tmp_path: Path):
             return "<html><body>ok</body></html>"
 
     class FakeContext:
+        def add_init_script(self, script):
+            captured["init_script"] = script
+
         def new_page(self):
             return FakePage()
 
     class FakeBrowser:
-        def new_context(self):
+        def new_context(self, **kwargs):
+            captured["new_context_kwargs"] = kwargs
             return FakeContext()
 
         def close(self):
             captured["browser_closed"] = True
 
     class FakeChromium:
-        def launch(self, *, headless):
+        def launch(self, *, headless, **kwargs):
             captured["headless"] = headless
+            captured["launch_kwargs"] = kwargs
             return FakeBrowser()
 
     class FakePlaywright:
@@ -137,6 +372,7 @@ def test_public_url_browser_fallback_sets_navigation_timeout(tmp_path: Path):
     assert captured["goto"]["url"] == "https://example.com"
     assert captured["goto"]["wait_until"] == "domcontentloaded"
     assert captured["goto"]["timeout"] > 0
+    assert captured["new_context_kwargs"] == {"locale": "zh-TW"}
     assert captured["wait_for_load_state"] == {"state": "networkidle", "timeout": 15000}
     assert captured["wait_for_timeout"] == 3000
     assert captured["browser_closed"] is True

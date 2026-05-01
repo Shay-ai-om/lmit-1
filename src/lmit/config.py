@@ -96,6 +96,16 @@ class PublicFetchConfig:
 
 
 @dataclass(frozen=True)
+class MarkItDownConfig:
+    llm_enabled: bool = False
+    llm_provider: str = "openai_compatible"
+    llm_base_url: str = ""
+    llm_model: str | None = None
+    llm_api_key_env: str = "OPENAI_API_KEY"
+    llm_prompt: str | None = None
+
+
+@dataclass(frozen=True)
 class PollingConfig:
     enabled: bool
     interval_seconds: int
@@ -164,6 +174,7 @@ class AppConfig:
     scan: ScanConfig
     conversion: ConversionConfig
     public_fetch: PublicFetchConfig
+    markitdown: MarkItDownConfig
     polling: PollingConfig
     output_naming: OutputNamingConfig
     wiki: WikiConfig
@@ -198,6 +209,7 @@ def default_config(cwd: Path | None = None) -> AppConfig:
             retry_failed=False,
         ),
         public_fetch=PublicFetchConfig(),
+        markitdown=MarkItDownConfig(),
         polling=PollingConfig(enabled=False, interval_seconds=300, stable_seconds=10),
         output_naming=OutputNamingConfig(
             enrich_filenames=False,
@@ -363,6 +375,18 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         ),
     )
 
+    markitdown_data = data.get("markitdown", {})
+    markitdown = MarkItDownConfig(
+        llm_enabled=bool(markitdown_data.get("llm_enabled", cfg.markitdown.llm_enabled)),
+        llm_provider=str(markitdown_data.get("llm_provider", cfg.markitdown.llm_provider)),
+        llm_base_url=str(markitdown_data.get("llm_base_url", cfg.markitdown.llm_base_url)),
+        llm_model=_optional_string(markitdown_data.get("llm_model", cfg.markitdown.llm_model)),
+        llm_api_key_env=str(
+            markitdown_data.get("llm_api_key_env", cfg.markitdown.llm_api_key_env)
+        ),
+        llm_prompt=_optional_string(markitdown_data.get("llm_prompt", cfg.markitdown.llm_prompt)),
+    )
+
     polling_data = data.get("polling", {})
     polling = PollingConfig(
         enabled=bool(polling_data.get("enabled", cfg.polling.enabled)),
@@ -465,6 +489,7 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         scan=scan,
         conversion=conversion,
         public_fetch=public_fetch,
+        markitdown=markitdown,
         polling=polling,
         output_naming=output_naming,
         wiki=wiki,

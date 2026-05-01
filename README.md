@@ -30,6 +30,11 @@ Default supported extensions:
 
 The exact conversion quality depends on the installed [Microsoft MarkItDown](https://github.com/microsoft/markitdown) extras. The base install is intentionally lightweight.
 
+For image-to-Markdown work, there are two separate pieces:
+
+- OCR depends on MarkItDown plugins being installed and enabled.
+- Image description depends on a configured multimodal LLM provider.
+
 ## Install
 
 From the project root:
@@ -50,6 +55,18 @@ For the full MarkItDown optional set:
 ```powershell
 .\.venv\Scripts\python -m pip install -e ".[full,dev]"
 ```
+
+If you want image descriptions through MarkItDown, set an API key environment variable before running LMIT when your provider needs one. Example for OpenAI:
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+```
+
+Sample config files you can copy from:
+
+- [C:\codex_projext\LMIT\config\config.example.toml](C:/codex_projext/LMIT/config/config.example.toml) - full project config
+- [C:\codex_projext\LMIT\config\markitdown-llm.sample.toml](C:/codex_projext/LMIT/config/markitdown-llm.sample.toml) - minimal MarkItDown LLM sample
+- [C:\codex_projext\LMIT\.env.sample](C:/codex_projext/LMIT/.env.sample) - sample environment variable file
 
 For the Scrapling public-URL pipeline:
 
@@ -196,6 +213,70 @@ For a dry run that preserves links but does not fetch page content:
 ```
 
 When a `.txt` file contains URLs, LMIT writes a Markdown note containing the original text, the detected link list, fetched page content, and any fetch errors.
+
+## MarkItDown LLM
+
+LMIT now exposes MarkItDown image-description settings through both TOML and the GUI.
+
+If you want a minimal starting point instead of the full project config, start from [C:\codex_projext\LMIT\config\markitdown-llm.sample.toml](C:/codex_projext/LMIT/config/markitdown-llm.sample.toml) and pair it with [C:\codex_projext\LMIT\.env.sample](C:/codex_projext/LMIT/.env.sample).
+
+Example TOML:
+
+```toml
+[conversion]
+enable_markitdown_plugins = true
+
+[markitdown]
+llm_enabled = true
+llm_provider = "openai_compatible"
+llm_base_url = ""
+llm_model = "gpt-4.1-mini"
+llm_api_key_env = "OPENAI_API_KEY"
+llm_prompt = "Write a detailed caption for this image."
+```
+
+Notes:
+
+- `enable_markitdown_plugins = true` is still the switch that allows OCR plugins to load.
+- `llm_enabled = true` enables image captioning for `.jpg`, `.jpeg`, and `.png`.
+- Supported providers are:
+  - `openai_compatible`
+  - `gemini`
+  - `lm_studio`
+  - `ollama`
+- `llm_api_key_env` names the environment variable that stores the API key. The key itself is not stored in the TOML or GUI settings file.
+- `llm_base_url` can be left blank to use the provider default:
+  - `openai_compatible` -> `https://api.openai.com/v1`
+  - `gemini` -> `https://generativelanguage.googleapis.com/v1beta`
+  - `lm_studio` -> `http://127.0.0.1:1234/v1`
+  - `ollama` -> `http://127.0.0.1:11434/api`
+- `gemini` uses the native Gemini `generateContent` API.
+- `lm_studio` uses LM Studio's OpenAI-compatible `/v1/chat/completions` endpoint.
+- `ollama` uses Ollama's native `/api/chat` endpoint.
+- For local providers, `llm_api_key_env` can be blank.
+
+Provider quick reference:
+
+```text
+openai_compatible
+  base URL: https://api.openai.com/v1
+
+gemini
+  base URL: https://generativelanguage.googleapis.com/v1beta
+  runtime endpoint shape: /models/<model>:generateContent
+
+lm_studio
+  base URL: http://127.0.0.1:1234/v1
+  default local port: 1234
+  runtime endpoint shape: /chat/completions
+
+ollama
+  base URL: http://127.0.0.1:11434/api
+  default local port: 11434
+  runtime endpoint shape: /chat
+```
+
+If `llm_enabled = true` but `llm_model` is blank, or a remote provider such as `openai_compatible` / `gemini` is missing its configured API key environment variable, LMIT will raise a configuration error at startup instead of silently producing blank image output.
 
 ## Logged-In Pages
 

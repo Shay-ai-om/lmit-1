@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lmit.config import PublicFetchConfig, default_config, load_config
+from lmit.config import MarkItDownConfig, PublicFetchConfig, default_config, load_config
 
 
 def test_default_config_includes_public_fetch_defaults(tmp_path: Path):
@@ -48,4 +48,33 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
         browser_executable_path=None,
         browser_connect_over_cdp=True,
         browser_cdp_port=9333,
+    )
+
+
+def test_load_config_overrides_markitdown_llm_block(tmp_path: Path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[markitdown]",
+                "llm_enabled = true",
+                'llm_provider = "gemini"',
+                'llm_base_url = "https://generativelanguage.googleapis.com/v1beta"',
+                'llm_model = "gemini-2.5-flash"',
+                'llm_api_key_env = "GEMINI_API_KEY"',
+                'llm_prompt = "Describe the image and any visible text."',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(config_path, cwd=tmp_path)
+
+    assert cfg.markitdown == MarkItDownConfig(
+        llm_enabled=True,
+        llm_provider="gemini",
+        llm_base_url="https://generativelanguage.googleapis.com/v1beta",
+        llm_model="gemini-2.5-flash",
+        llm_api_key_env="GEMINI_API_KEY",
+        llm_prompt="Describe the image and any visible text.",
     )

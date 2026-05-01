@@ -96,6 +96,15 @@ class RawMarkdownGui:
         self.interval_var = tk.IntVar(value=self.settings.interval_seconds)
         self.stable_var = tk.IntVar(value=self.settings.stable_seconds)
         self.fetch_urls_var = tk.BooleanVar(value=self.settings.fetch_urls)
+        self.enable_markitdown_plugins_var = tk.BooleanVar(
+            value=self.settings.enable_markitdown_plugins
+        )
+        self.image_llm_enabled_var = tk.BooleanVar(value=self.settings.image_llm_enabled)
+        self.image_llm_provider_var = tk.StringVar(value=self.settings.image_llm_provider)
+        self.image_llm_base_url_var = tk.StringVar(value=self.settings.image_llm_base_url)
+        self.image_llm_model_var = tk.StringVar(value=self.settings.image_llm_model)
+        self.image_llm_api_key_env_var = tk.StringVar(value=self.settings.image_llm_api_key_env)
+        self.image_llm_prompt_var = tk.StringVar(value=self.settings.image_llm_prompt)
         self.skip_unchanged_var = tk.BooleanVar(value=self.settings.skip_unchanged)
         self.overwrite_var = tk.BooleanVar(value=self.settings.overwrite)
         self.enrich_filenames_var = tk.BooleanVar(value=self.settings.enrich_filenames)
@@ -201,6 +210,34 @@ class RawMarkdownGui:
             width=12,
         ).grid(row=2, column=1, sticky="w", padx=10, pady=4)
 
+        markitdown_frame = ttk.LabelFrame(options_frame, text="MarkItDown")
+        markitdown_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
+        markitdown_frame.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            markitdown_frame,
+            text="啟用 MarkItDown plugins（OCR plugin 需要這個）",
+            variable=self.enable_markitdown_plugins_var,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
+        ttk.Checkbutton(
+            markitdown_frame,
+            text="啟用圖片 LLM 描述",
+            variable=self.image_llm_enabled_var,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=4)
+        ttk.Label(markitdown_frame, text="LLM provider").grid(
+            row=2, column=0, sticky="w", padx=8, pady=3
+        )
+        ttk.Combobox(
+            markitdown_frame,
+            textvariable=self.image_llm_provider_var,
+            state="readonly",
+            values=("openai_compatible", "gemini", "lm_studio", "ollama"),
+            width=18,
+        ).grid(row=2, column=1, sticky="ew", padx=8, pady=3)
+        self._entry_row(markitdown_frame, 3, "LLM base URL", self.image_llm_base_url_var)
+        self._entry_row(markitdown_frame, 4, "LLM model", self.image_llm_model_var)
+        self._entry_row(markitdown_frame, 5, "API key env var", self.image_llm_api_key_env_var)
+        self._entry_row(markitdown_frame, 6, "Image prompt", self.image_llm_prompt_var)
+
         checks = [
             ("抓取文字檔中的 link content", self.fetch_urls_var),
             ("跳過未變更檔案", self.skip_unchanged_var),
@@ -209,13 +246,13 @@ class RawMarkdownGui:
             ("開啟 GUI 後自動開始監控", self.launch_monitor_var),
             ("Windows 開機自啟並開始監控", self.autostart_var),
         ]
-        for offset, (label, variable) in enumerate(checks, start=3):
+        for offset, (label, variable) in enumerate(checks, start=4):
             ttk.Checkbutton(options_frame, text=label, variable=variable).grid(
                 row=offset, column=0, columnspan=2, sticky="w", padx=10, pady=3
             )
 
         status_frame = ttk.LabelFrame(options_frame, text="執行狀態")
-        status_frame.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 8))
+        status_frame.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 8))
         status_frame.columnconfigure(1, weight=1)
         self._status_row(status_frame, 0, "最後執行", self.last_run_var)
         self._status_row(status_frame, 1, "最後產出 Markdown", self.last_output_var)
@@ -269,6 +306,11 @@ class RawMarkdownGui:
         ttk = self.ttk
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=3)
         ttk.Label(parent, textvariable=variable).grid(row=row, column=1, sticky="w", padx=8, pady=3)
+
+    def _entry_row(self, parent, row: int, label: str, variable) -> None:
+        ttk = self.ttk
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=3)
+        ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8, pady=3)
 
     def add_input_dir(self) -> None:
         from tkinter import filedialog
@@ -499,6 +541,13 @@ class RawMarkdownGui:
             interval_seconds=interval,
             stable_seconds=stable,
             fetch_urls=bool(self.fetch_urls_var.get()),
+            enable_markitdown_plugins=bool(self.enable_markitdown_plugins_var.get()),
+            image_llm_enabled=bool(self.image_llm_enabled_var.get()),
+            image_llm_provider=self.image_llm_provider_var.get().strip() or "openai_compatible",
+            image_llm_base_url=self.image_llm_base_url_var.get().strip(),
+            image_llm_model=self.image_llm_model_var.get().strip(),
+            image_llm_api_key_env=self.image_llm_api_key_env_var.get().strip(),
+            image_llm_prompt=self.image_llm_prompt_var.get().strip(),
             skip_unchanged=bool(self.skip_unchanged_var.get()),
             overwrite=bool(self.overwrite_var.get()),
             enrich_filenames=bool(self.enrich_filenames_var.get()),

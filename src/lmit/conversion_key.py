@@ -8,11 +8,20 @@ from lmit.config import AppConfig
 
 def conversion_key(cfg: AppConfig) -> str:
     payload = {
-        "version": 9,
+        "version": 11,
         "fetch_urls": cfg.conversion.fetch_urls,
         "enable_markitdown_plugins": cfg.conversion.enable_markitdown_plugins,
         "blank_note_for_images": cfg.conversion.blank_note_for_images,
         "supported_exts": sorted(cfg.scan.supported_exts),
+        "markitdown": {
+            "algorithm": 2,
+            "llm_enabled": cfg.markitdown.llm_enabled,
+            "llm_provider": cfg.markitdown.llm_provider,
+            "llm_base_url": cfg.markitdown.llm_base_url,
+            "llm_model": cfg.markitdown.llm_model,
+            "llm_api_key_env": cfg.markitdown.llm_api_key_env,
+            "llm_prompt": cfg.markitdown.llm_prompt,
+        },
         "public_fetch": {
             # Bump this when the public-URL extraction pipeline changes in a
             # way that should invalidate previously "unchanged" outputs.

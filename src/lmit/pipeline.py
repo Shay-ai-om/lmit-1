@@ -88,7 +88,10 @@ def run_convert(
         report.log(f"retry failed filter: matched={len(files)}/{before}")
 
     key = conversion_key(cfg)
-    adapter = MarkItDownAdapter(enable_plugins=cfg.conversion.enable_markitdown_plugins)
+    adapter = MarkItDownAdapter(
+        enable_plugins=cfg.conversion.enable_markitdown_plugins,
+        llm_config=cfg.markitdown,
+    )
     public_fetcher = PublicUrlFetcher(
         adapter,
         work_dir=cfg.paths.work_dir,

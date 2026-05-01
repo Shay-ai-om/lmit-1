@@ -22,6 +22,13 @@ class GuiSettings:
     interval_seconds: int
     stable_seconds: int
     fetch_urls: bool
+    enable_markitdown_plugins: bool
+    image_llm_enabled: bool
+    image_llm_provider: str
+    image_llm_base_url: str
+    image_llm_model: str
+    image_llm_api_key_env: str
+    image_llm_prompt: str
     skip_unchanged: bool
     overwrite: bool
     enrich_filenames: bool
@@ -56,6 +63,13 @@ def default_gui_settings(cwd: Path | None = None) -> GuiSettings:
         interval_seconds=cfg.polling.interval_seconds,
         stable_seconds=cfg.polling.stable_seconds,
         fetch_urls=cfg.conversion.fetch_urls,
+        enable_markitdown_plugins=cfg.conversion.enable_markitdown_plugins,
+        image_llm_enabled=cfg.markitdown.llm_enabled,
+        image_llm_provider=cfg.markitdown.llm_provider,
+        image_llm_base_url=cfg.markitdown.llm_base_url,
+        image_llm_model=cfg.markitdown.llm_model or "",
+        image_llm_api_key_env=cfg.markitdown.llm_api_key_env,
+        image_llm_prompt=cfg.markitdown.llm_prompt or "",
         skip_unchanged=cfg.conversion.skip_unchanged,
         overwrite=cfg.conversion.overwrite,
         enrich_filenames=cfg.output_naming.enrich_filenames,
@@ -117,8 +131,18 @@ def build_app_config_from_gui(settings: GuiSettings, cwd: Path | None = None) ->
     conversion = replace(
         cfg.conversion,
         fetch_urls=bool(settings.fetch_urls),
+        enable_markitdown_plugins=bool(settings.enable_markitdown_plugins),
         skip_unchanged=bool(settings.skip_unchanged),
         overwrite=bool(settings.overwrite),
+    )
+    markitdown = replace(
+        cfg.markitdown,
+        llm_enabled=bool(settings.image_llm_enabled),
+        llm_provider=_normalize_llm_provider(settings.image_llm_provider, cfg.markitdown.llm_provider),
+        llm_base_url=str(settings.image_llm_base_url).strip(),
+        llm_model=_optional_string(settings.image_llm_model),
+        llm_api_key_env=str(settings.image_llm_api_key_env).strip(),
+        llm_prompt=_optional_string(settings.image_llm_prompt),
     )
     output_naming = replace(
         cfg.output_naming,
@@ -134,6 +158,7 @@ def build_app_config_from_gui(settings: GuiSettings, cwd: Path | None = None) ->
         polling=polling,
         conversion=conversion,
         public_fetch=public_fetch,
+        markitdown=markitdown,
         output_naming=output_naming,
     )
 
@@ -156,6 +181,26 @@ def _coerce_settings(payload: dict[str, Any], defaults: GuiSettings) -> GuiSetti
         interval_seconds=max(1, _coerce_int(payload.get("interval_seconds"), defaults.interval_seconds)),
         stable_seconds=max(0, _coerce_int(payload.get("stable_seconds"), defaults.stable_seconds)),
         fetch_urls=bool(payload.get("fetch_urls")),
+        enable_markitdown_plugins=bool(
+            payload.get("enable_markitdown_plugins", defaults.enable_markitdown_plugins)
+        ),
+        image_llm_enabled=bool(payload.get("image_llm_enabled", defaults.image_llm_enabled)),
+        image_llm_provider=_normalize_llm_provider(
+            payload.get("image_llm_provider"),
+            defaults.image_llm_provider,
+        ),
+        image_llm_base_url=_coerce_string(
+            payload,
+            "image_llm_base_url",
+            defaults.image_llm_base_url,
+        ),
+        image_llm_model=_coerce_string(payload, "image_llm_model", defaults.image_llm_model),
+        image_llm_api_key_env=_coerce_string(
+            payload,
+            "image_llm_api_key_env",
+            defaults.image_llm_api_key_env,
+        ),
+        image_llm_prompt=_coerce_string(payload, "image_llm_prompt", defaults.image_llm_prompt),
         skip_unchanged=bool(payload.get("skip_unchanged")),
         overwrite=bool(payload.get("overwrite")),
         enrich_filenames=bool(payload.get("enrich_filenames")),
@@ -172,6 +217,15 @@ def _coerce_int(value: Any, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return fallback
+
+
+def _coerce_string(payload: dict[str, Any], key: str, fallback: str) -> str:
+    if key not in payload:
+        return fallback
+    value = payload.get(key)
+    if value is None:
+        return fallback
+    return str(value)
 
 
 def _optional_string(value: Any) -> str | None:
@@ -193,6 +247,13 @@ def _normalize_public_fetch_mode(value: Any, fallback: str) -> str:
     if text in {"auto", "legacy"}:
         return text
     return str(fallback).strip().lower() or "auto"
+
+
+def _normalize_llm_provider(value: Any, fallback: str) -> str:
+    text = str(value or fallback).strip().lower()
+    if text in {"openai_compatible", "gemini", "lm_studio", "ollama"}:
+        return text
+    return str(fallback).strip().lower() or "openai_compatible"
 
 
 def _resolve_user_path(value: str, base: Path) -> Path:
