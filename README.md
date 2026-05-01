@@ -62,6 +62,8 @@ If you want image descriptions through MarkItDown, set an API key environment va
 $env:OPENAI_API_KEY = "sk-..."
 ```
 
+LMIT automatically loads `.env` and then `.env.local` from the current working directory at startup. Values already present in the process environment are kept as-is.
+
 Sample config files you can copy from:
 
 - [C:\codex_projext\LMIT\config\config.example.toml](C:/codex_projext/LMIT/config/config.example.toml) - full project config
@@ -245,6 +247,7 @@ Notes:
   - `lm_studio`
   - `ollama`
 - `llm_api_key_env` names the environment variable that stores the API key. The key itself is not stored in the TOML or GUI settings file.
+- LMIT automatically loads `.env` and `.env.local` from the working directory before CLI and GUI startup.
 - `llm_base_url` can be left blank to use the provider default:
   - `openai_compatible` -> `https://api.openai.com/v1`
   - `gemini` -> `https://generativelanguage.googleapis.com/v1beta`

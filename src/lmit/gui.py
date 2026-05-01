@@ -18,6 +18,7 @@ from lmit.autostart import (
     set_autostart,
 )
 from lmit.cancellation import ConversionCancelled
+from lmit.env import load_default_env
 from lmit.gui_settings import (
     GuiSettings,
     build_app_config_from_gui,
@@ -652,6 +653,7 @@ def _open_path(path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_default_env()
     parser = argparse.ArgumentParser(prog="lmit-gui")
     parser.add_argument("--settings", type=Path, help="GUI settings JSON path")
     parser.add_argument(
