@@ -238,13 +238,11 @@ For domains that should use that already-open browser before Scrapling or
 MarkItDown, add `cdp_first_domains`. Parent domains match subdomains, so
 `baidu.com` also covers `tieba.baidu.com`. LMIT can launch that CDP browser
 itself with a persistent profile, so you do not need to start remote debugging
-by hand:
+by hand. The default config enables this for Baidu/Tieba:
 
 ```toml
 [public_fetch]
 provider = "auto"
-browser_connect_over_cdp = true
-browser_cdp_port = 9225
 public_browser_auto_launch = true
 public_browser_profile_dir = ".lmit_work/browser_profiles/public"
 cdp_first_domains = ["baidu.com"]
@@ -364,7 +362,7 @@ The social-site examples are configured to avoid the default fresh Playwright Ch
 - `youtube`: persistent Google Chrome profile
 - `x`: persistent Microsoft Edge profile
 
-They also enable `login_connect_over_cdp`, which means LMIT launches the real browser executable first and then attaches to it over Chrome DevTools Protocol, instead of asking Playwright to launch the login window directly.
+They also enable `login_connect_over_cdp`, which means LMIT launches the real browser executable first and then attaches to it over Chrome DevTools Protocol, instead of asking Playwright to launch the login window directly. Conversion uses the same CDP profile for those session sites, so Reddit, YouTube, and X can reuse the real browser cookies/profile during fetches rather than falling back to a fresh Playwright browser.
 
 This helps with repeated bot-challenge loops on sites that dislike the default Playwright browser fingerprint. If you want to change browser channel, edit the matching session block. For example:
 

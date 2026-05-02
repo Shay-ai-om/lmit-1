@@ -113,16 +113,17 @@ min_meaningful_chars = 200
 #
 # Optional: attach public-URL browser fallback to a real browser you launched
 # with a CDP port. This can help with sites that treat plain automation traffic
-# differently from a normal browser session.
+# differently from a normal browser session. CDP-first domains below use this
+# same auto-launched browser even when browser_connect_over_cdp remains false.
 # browser_connect_over_cdp = true
 # browser_cdp_port = 9225
-# public_browser_auto_launch = true
-# public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+public_browser_auto_launch = true
+public_browser_profile_dir = ".lmit_work/browser_profiles/public"
 #
-# Optional: for domains that strongly prefer an already-open real browser
-# session, try CDP first before Scrapling/MarkItDown. Parent domains match
-# subdomains, so "baidu.com" also matches "tieba.baidu.com".
-# cdp_first_domains = ["baidu.com"]
+# For domains that strongly prefer an already-open real browser session, try
+# CDP first before Scrapling/MarkItDown. Parent domains match subdomains, so
+# "baidu.com" also matches "tieba.baidu.com".
+cdp_first_domains = ["baidu.com"]
 # Set provider = "legacy" to roll public URLs back to the older MarkItDown-first flow.
 
 [polling]
@@ -198,6 +199,7 @@ domains = [
   "www.reddit.com",
   "old.reddit.com",
   "new.reddit.com",
+  "redd.it",
 ]
 login_url = "https://www.reddit.com/login/"
 state_file = "sessions/reddit_state.json"

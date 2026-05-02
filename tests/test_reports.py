@@ -58,7 +58,7 @@ class BrowserOverrideFetcher(PublicUrlFetcher):
         super().__init__(*args, **kwargs)
         self.browser_result = browser_result
 
-    def _fetch_with_browser(self, url: str) -> str:
+    def _fetch_with_browser(self, url: str, *, force_attached: bool = False) -> str:
         return self.browser_result
 
 

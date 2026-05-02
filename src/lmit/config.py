@@ -96,9 +96,9 @@ class PublicFetchConfig:
     browser_executable_path: Path | None = None
     browser_connect_over_cdp: bool = False
     browser_cdp_port: int | None = None
-    public_browser_auto_launch: bool = False
+    public_browser_auto_launch: bool = True
     public_browser_profile_dir: Path | None = None
-    cdp_first_domains: tuple[str, ...] = ()
+    cdp_first_domains: tuple[str, ...] = ("baidu.com",)
 
 
 @dataclass(frozen=True)

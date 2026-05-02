@@ -17,6 +17,7 @@ def test_blank_public_url_text_detects_none_and_whitespace():
 
 def test_blocked_public_url_text_reuses_repo_markers():
     assert is_blocked_public_url_text("Just a moment... checking your browser")
+    assert is_blocked_public_url_text("You've been blocked by network security.")
     assert is_blocked_public_url_text("百度安全验证\n请完成下方验证后继续操作")
 
 

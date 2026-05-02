@@ -76,7 +76,9 @@ class PublicUrlFetcher:
             f"scrapling={self.public_fetch.enable_scrapling} "
             f"dynamic={self.public_fetch.enable_scrapling_dynamic} "
             f"stealthy={self.public_fetch.enable_scrapling_stealthy} "
-            f"stealthy_cloudflare={self.public_fetch.enable_scrapling_stealthy_on_cloudflare}"
+            f"stealthy_cloudflare={self.public_fetch.enable_scrapling_stealthy_on_cloudflare} "
+            f"cdp_first={','.join(self.public_fetch.cdp_first_domains) or 'none'} "
+            f"public_browser_auto_launch={self.public_fetch.public_browser_auto_launch}"
         )
         if provider == "legacy":
             result, stage_name = self._fetch_legacy(url, fetch_url=fetch_url)
@@ -106,7 +108,11 @@ class PublicUrlFetcher:
         self._log(f"[PUBLIC-FETCH-CDP-FIRST] url={url}")
         self.cancel_check()
         try:
-            text, stage_name = self._fetch_browser_stage(url, fetch_url=fetch_url)
+            text, stage_name = self._fetch_browser_stage(
+                url,
+                fetch_url=fetch_url,
+                force_attached=True,
+            )
         except Exception as exc:
             self._log(
                 "[PUBLIC-FETCH-CDP-FIRST-FAILED] "
@@ -126,8 +132,6 @@ class PublicUrlFetcher:
         return None
 
     def _should_use_cdp_first(self, url: str) -> bool:
-        if not self.public_fetch.browser_connect_over_cdp:
-            return False
         domains = self.public_fetch.cdp_first_domains
         if not domains:
             return False
@@ -260,9 +264,15 @@ class PublicUrlFetcher:
                 self._log(f"[PUBLIC-BROWSER-FALLBACK-FAILED] {url}: {fallback_exc!r}")
                 raise original_exc from fallback_exc
 
-    def _fetch_browser_stage(self, url: str, *, fetch_url: str) -> tuple[str, str]:
+    def _fetch_browser_stage(
+        self,
+        url: str,
+        *,
+        fetch_url: str,
+        force_attached: bool = False,
+    ) -> tuple[str, str]:
         self.cancel_check()
-        text = self._fetch_with_browser(fetch_url)
+        text = self._fetch_with_browser(fetch_url, force_attached=force_attached)
         quality = self._quality_reason(text)
         if quality is None:
             self._log_stage_success("legacy_playwright_html", url, text)
@@ -270,7 +280,7 @@ class PublicUrlFetcher:
             self._log_stage_quality("legacy_playwright_html", url, text, quality)
         return text, "legacy_playwright_html"
 
-    def _fetch_with_browser(self, url: str) -> str:
+    def _fetch_with_browser(self, url: str, *, force_attached: bool = False) -> str:
         try:
             from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
             from playwright.sync_api import sync_playwright
@@ -285,7 +295,7 @@ class PublicUrlFetcher:
 
         with sync_playwright() as p:
             self.cancel_check()
-            if self.public_fetch.browser_connect_over_cdp:
+            if force_attached or self.public_fetch.browser_connect_over_cdp:
                 html = self._fetch_with_attached_browser(
                     p,
                     url,

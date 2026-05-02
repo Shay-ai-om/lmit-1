@@ -3,7 +3,11 @@ from pathlib import Path
 from lmit.config import SessionSiteConfig
 from lmit.fetchers.session_url import SessionUrlFetcher
 from lmit.reports import ConversionReport
-from lmit.sessions.browser_provider import BrowserFetchResult, SessionLoginRequired
+from lmit.sessions.browser_provider import (
+    BrowserFetchResult,
+    PlaywrightBrowserProvider,
+    SessionLoginRequired,
+)
 from lmit.sessions.strategies.facebook import (
     clean_facebook_text,
     crop_desktop_facebook_chrome,
@@ -89,10 +93,10 @@ class DummyAdapter:
     pass
 
 
-def _site(tmp_path: Path, *, retry_count: int = 1) -> SessionSiteConfig:
+def _site(tmp_path: Path, *, retry_count: int = 1, **overrides) -> SessionSiteConfig:
     state = tmp_path / "state.json"
     state.write_text("{}", encoding="utf-8")
-    return SessionSiteConfig(
+    payload = dict(
         name="example",
         domains=["example.com"],
         login_url="https://example.com/login",
@@ -102,6 +106,8 @@ def _site(tmp_path: Path, *, retry_count: int = 1) -> SessionSiteConfig:
         retry_count=retry_count,
         retry_backoff_ms=0,
     )
+    payload.update(overrides)
+    return SessionSiteConfig(**payload)
 
 
 def test_session_url_fetcher_retries_provider_errors(tmp_path: Path):
@@ -145,3 +151,56 @@ def test_session_url_fetcher_recaptures_on_session_login_required(tmp_path: Path
     assert result == "ok"
     assert captures == ["example"]
     assert any("[SESSION-EXPIRED]" in line for line in report.lines)
+
+
+def test_playwright_provider_launches_cdp_profile_when_endpoint_missing(
+    tmp_path: Path,
+    monkeypatch,
+):
+    calls: dict[str, object] = {"waits": 0}
+    executable = tmp_path / "msedge.exe"
+    executable.write_text("", encoding="utf-8")
+    site = _site(
+        tmp_path,
+        name="reddit",
+        login_connect_over_cdp=True,
+        login_cdp_port=9444,
+        login_persistent_profile_dir=tmp_path / "reddit_profile",
+        browser_executable_path=executable,
+    )
+
+    def fake_wait_for_cdp_endpoint(endpoint: str, *, timeout_seconds: float) -> None:
+        calls["waits"] = int(calls["waits"]) + 1
+        raise TimeoutError("not ready")
+
+    class FakePopen:
+        def __init__(self, args, **kwargs):
+            calls["popen_args"] = args
+            calls["popen_kwargs"] = kwargs
+
+    monkeypatch.setattr(
+        "lmit.sessions.browser_provider.wait_for_cdp_endpoint",
+        fake_wait_for_cdp_endpoint,
+    )
+    monkeypatch.setattr("lmit.sessions.browser_provider.subprocess.Popen", FakePopen)
+
+    report = ConversionReport()
+    provider = PlaywrightBrowserProvider(
+        adapter=DummyAdapter(),
+        work_dir=tmp_path,
+        report=report,
+    )
+
+    provider._ensure_cdp_browser(
+        site,
+        port=9444,
+        target_url="https://www.reddit.com/r/LocalLLaMA/s/abc",
+    )
+
+    assert calls["waits"] == 1
+    popen_args = calls["popen_args"]
+    assert str(executable) == popen_args[0]
+    assert "--remote-debugging-port=9444" in popen_args
+    assert f"--user-data-dir={tmp_path / 'reddit_profile'}" in popen_args
+    assert "https://www.reddit.com/r/LocalLLaMA/s/abc" in popen_args
+    assert any("[SESSION-BROWSER-LAUNCH]" in line for line in report.lines)

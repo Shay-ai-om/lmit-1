@@ -69,7 +69,7 @@ class BrowserOverrideFetcher(PublicUrlFetcher):
         super().__init__(*args, **kwargs)
         self.browser_result = browser_result
 
-    def _fetch_with_browser(self, url: str) -> str:
+    def _fetch_with_browser(self, url: str, *, force_attached: bool = False) -> str:
         return self.browser_result
 
 
@@ -89,7 +89,7 @@ class BrowserFailureFetcher(PublicUrlFetcher):
         super().__init__(*args, **kwargs)
         self.browser_exc = browser_exc
 
-    def _fetch_with_browser(self, url: str) -> str:
+    def _fetch_with_browser(self, url: str, *, force_attached: bool = False) -> str:
         raise self.browser_exc
 
 
@@ -173,6 +173,30 @@ def test_public_url_pipeline_uses_cdp_first_for_matching_domain(tmp_path: Path):
     assert report.stats.public_url_playwright_success == 1
     assert any("[PUBLIC-FETCH-CDP-FIRST]" in line for line in report.lines)
     assert any("stage=legacy_playwright_html" in line for line in report.lines)
+
+
+def test_public_url_pipeline_uses_default_cdp_first_for_baidu(tmp_path: Path):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher()
+
+    fetcher = BrowserOverrideFetcher(
+        adapter,
+        browser_result=LONG_TEXT,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(provider="auto"),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://tieba.baidu.com/p/9152102978?lp=5027")
+
+    assert result == LONG_TEXT
+    assert scrapling.calls == []
+    assert adapter.convert_url_calls == []
+    assert any("[PUBLIC-FETCH-CDP-FIRST]" in line for line in report.lines)
+    assert any("public_browser_auto_launch=True" in line for line in report.lines)
+    assert any("cdp_first=baidu.com" in line for line in report.lines)
 
 
 def test_public_url_pipeline_skips_cdp_first_for_non_matching_domain(tmp_path: Path):

@@ -49,7 +49,7 @@ def test_conversion_key_changes_when_cdp_first_domains_change(tmp_path):
     cfg = default_config(cwd=tmp_path)
     cdp_cfg = replace(
         cfg,
-        public_fetch=replace(cfg.public_fetch, cdp_first_domains=("baidu.com",)),
+        public_fetch=replace(cfg.public_fetch, cdp_first_domains=("reddit.com",)),
     )
 
     assert conversion_key(cfg) != conversion_key(cdp_cfg)
@@ -59,7 +59,7 @@ def test_conversion_key_changes_when_public_browser_auto_launch_changes(tmp_path
     cfg = default_config(cwd=tmp_path)
     auto_launch_cfg = replace(
         cfg,
-        public_fetch=replace(cfg.public_fetch, public_browser_auto_launch=True),
+        public_fetch=replace(cfg.public_fetch, public_browser_auto_launch=False),
     )
 
     assert conversion_key(cfg) != conversion_key(auto_launch_cfg)
