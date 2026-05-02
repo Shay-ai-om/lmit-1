@@ -122,8 +122,8 @@ class RawMarkdownGui:
         ttk = self.ttk
 
         self.root.title("LMIT Raw Markdown 監控台")
-        self.root.geometry("980x720")
-        self.root.minsize(820, 620)
+        self.root.geometry("1040x820")
+        self.root.minsize(900, 760)
 
         style = ttk.Style()
         if "vista" in style.theme_names():
@@ -136,7 +136,7 @@ class RawMarkdownGui:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(2, weight=1)
+        outer.rowconfigure(3, weight=1)
 
         header = ttk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
@@ -261,7 +261,7 @@ class RawMarkdownGui:
         self._status_row(status_frame, 3, "最近報告", self.last_report_var)
 
         buttons = ttk.Frame(outer)
-        buttons.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        buttons.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         self.save_button = ttk.Button(buttons, text="儲存設定", command=self.save_settings)
         self.save_button.grid(row=0, column=0, padx=(0, 6))
         self.run_button = ttk.Button(
@@ -283,7 +283,7 @@ class RawMarkdownGui:
         )
 
         log_frame = ttk.LabelFrame(outer, text="執行紀錄")
-        log_frame.grid(row=2, column=0, sticky="nsew", pady=(12, 0))
+        log_frame.grid(row=3, column=0, sticky="nsew", pady=(12, 0))
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
         self.log_text = tk.Text(log_frame, height=12, wrap="word", state="disabled")

@@ -55,6 +55,12 @@ def conversion_key(cfg: AppConfig) -> str:
                 if cfg.public_fetch.public_browser_profile_dir is not None
                 else None
             ),
+            "public_browser_verification_timeout_seconds": (
+                cfg.public_fetch.public_browser_verification_timeout_seconds
+            ),
+            "public_browser_verification_poll_seconds": (
+                cfg.public_fetch.public_browser_verification_poll_seconds
+            ),
             "cdp_first_domains": sorted(cfg.public_fetch.cdp_first_domains),
         },
         "session_sites": [

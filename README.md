@@ -245,11 +245,15 @@ by hand. The default config enables this for Baidu/Tieba:
 provider = "auto"
 public_browser_auto_launch = true
 public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+public_browser_verification_timeout_seconds = 180
+public_browser_verification_poll_seconds = 3
 cdp_first_domains = ["baidu.com"]
 ```
 
 When the browser opens for a challenged site, complete the verification in that
-window once. Later runs reuse the same profile and cookies.
+window once. If the page still looks like a security check after navigation,
+LMIT waits and polls the same browser tab until the verification clears or the
+configured timeout expires. Later runs reuse the same profile and cookies.
 
 For a dry run that preserves links but does not fetch page content:
 

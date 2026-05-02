@@ -65,6 +65,20 @@ def test_conversion_key_changes_when_public_browser_auto_launch_changes(tmp_path
     assert conversion_key(cfg) != conversion_key(auto_launch_cfg)
 
 
+def test_conversion_key_changes_when_public_browser_verification_wait_changes(tmp_path):
+    cfg = default_config(cwd=tmp_path)
+    wait_cfg = replace(
+        cfg,
+        public_fetch=replace(
+            cfg.public_fetch,
+            public_browser_verification_timeout_seconds=240,
+            public_browser_verification_poll_seconds=5,
+        ),
+    )
+
+    assert conversion_key(cfg) != conversion_key(wait_cfg)
+
+
 def test_conversion_key_changes_when_markitdown_llm_changes(tmp_path):
     cfg = default_config(cwd=tmp_path)
     llm_cfg = replace(

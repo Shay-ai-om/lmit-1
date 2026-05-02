@@ -365,6 +365,7 @@ class PublicUrlFetcher:
                     page,
                     url,
                     playwright_timeout_error=playwright_timeout_error,
+                    wait_for_verification=True,
                 )
                 return page.content()
             finally:
@@ -419,6 +420,7 @@ class PublicUrlFetcher:
         url: str,
         *,
         playwright_timeout_error,
+        wait_for_verification: bool = False,
     ) -> None:
         page.goto(
             url,
@@ -431,6 +433,71 @@ class PublicUrlFetcher:
             self._log(f"[WARN] networkidle timeout for public URL: {url}")
         self.cancel_check()
         page.wait_for_timeout(3000)
+        if wait_for_verification:
+            self._wait_for_manual_verification(
+                page,
+                url,
+                playwright_timeout_error=playwright_timeout_error,
+            )
+
+    def _wait_for_manual_verification(
+        self,
+        page,
+        url: str,
+        *,
+        playwright_timeout_error,
+    ) -> None:
+        if not self._page_text_is_blocked(page):
+            return
+
+        timeout_seconds = max(
+            0,
+            int(self.public_fetch.public_browser_verification_timeout_seconds),
+        )
+        poll_seconds = max(
+            1,
+            int(self.public_fetch.public_browser_verification_poll_seconds),
+        )
+        if timeout_seconds <= 0:
+            return
+
+        deadline_ms = timeout_seconds * 1000
+        elapsed_ms = 0
+        self._log(
+            "[PUBLIC-BROWSER-VERIFY-WAIT] "
+            f"url={url} timeout_seconds={timeout_seconds}"
+        )
+        while elapsed_ms < deadline_ms:
+            self.cancel_check()
+            wait_ms = min(poll_seconds * 1000, deadline_ms - elapsed_ms)
+            page.wait_for_timeout(wait_ms)
+            elapsed_ms += wait_ms
+            try:
+                page.wait_for_load_state("networkidle", timeout=2000)
+            except playwright_timeout_error:
+                pass
+            if not self._page_text_is_blocked(page):
+                page.wait_for_timeout(2000)
+                self._log(
+                    "[PUBLIC-BROWSER-VERIFY-CLEARED] "
+                    f"url={url} waited_seconds={elapsed_ms / 1000:.0f}"
+                )
+                return
+
+        self._log(
+            "[PUBLIC-BROWSER-VERIFY-TIMEOUT] "
+            f"url={url} waited_seconds={timeout_seconds}"
+        )
+
+    def _page_text_is_blocked(self, page) -> bool:
+        try:
+            text = page.inner_text("body", timeout=3000)
+        except Exception:
+            try:
+                text = page.content()
+            except Exception:
+                return False
+        return is_blocked_public_url_text(text)
 
     def _get_scrapling_fetcher(self):
         if self._scrapling_fetcher is None:

@@ -33,6 +33,8 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
                 "browser_cdp_port = 9333",
                 "public_browser_auto_launch = true",
                 'public_browser_profile_dir = ".lmit_work/browser_profiles/baidu"',
+                "public_browser_verification_timeout_seconds = 240",
+                "public_browser_verification_poll_seconds = 5",
                 'cdp_first_domains = ["baidu.com", "https://tieba.baidu.com:443/path"]',
             ]
         ),
@@ -59,6 +61,8 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
         browser_cdp_port=9333,
         public_browser_auto_launch=True,
         public_browser_profile_dir=tmp_path / ".lmit_work" / "browser_profiles" / "baidu",
+        public_browser_verification_timeout_seconds=240,
+        public_browser_verification_poll_seconds=5,
         cdp_first_domains=("baidu.com", "tieba.baidu.com"),
     )
 

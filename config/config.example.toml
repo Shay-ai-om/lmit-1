@@ -119,6 +119,11 @@ min_meaningful_chars = 200
 # browser_cdp_port = 9225
 public_browser_auto_launch = true
 public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+# When a real public browser shows a verification page (for example Baidu
+# security checks), keep polling the same page so you can finish verification
+# manually before content extraction continues.
+public_browser_verification_timeout_seconds = 180
+public_browser_verification_poll_seconds = 3
 #
 # For domains that strongly prefer an already-open real browser session, try
 # CDP first before Scrapling/MarkItDown. Parent domains match subdomains, so

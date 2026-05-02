@@ -314,6 +314,62 @@ def test_public_cdp_auto_launch_starts_browser_when_endpoint_is_missing(
     assert any("[PUBLIC-BROWSER-LAUNCH]" in line for line in report.lines)
 
 
+def test_public_browser_waits_until_manual_verification_clears(tmp_path: Path):
+    class FakeTimeout(Exception):
+        pass
+
+    class FakePage:
+        def __init__(self):
+            self.body_text = "百度安全验证\n请完成下方验证后继续操作"
+            self.waits: list[int] = []
+            self.load_states: list[tuple[str, int]] = []
+
+        def goto(self, url, *, wait_until, timeout):
+            self.goto_url = url
+            self.goto_wait_until = wait_until
+            self.goto_timeout = timeout
+
+        def wait_for_load_state(self, state, *, timeout):
+            self.load_states.append((state, timeout))
+
+        def wait_for_timeout(self, timeout):
+            self.waits.append(timeout)
+            if len(self.waits) >= 2:
+                self.body_text = LONG_TEXT
+
+        def inner_text(self, selector, *, timeout):
+            assert selector == "body"
+            return self.body_text
+
+        def content(self):
+            return f"<main>{self.body_text}</main>"
+
+    report = ConversionReport()
+    fetcher = PublicUrlFetcher(
+        DummyAdapter(),
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(
+            public_browser_verification_timeout_seconds=10,
+            public_browser_verification_poll_seconds=1,
+        ),
+    )
+
+    page = FakePage()
+    fetcher._load_browser_page(
+        page,
+        "https://tieba.baidu.com/p/9152102978",
+        playwright_timeout_error=FakeTimeout,
+        wait_for_verification=True,
+    )
+
+    assert page.waits == [3000, 1000, 2000]
+    assert ("networkidle", 15000) in page.load_states
+    assert ("networkidle", 2000) in page.load_states
+    assert any("[PUBLIC-BROWSER-VERIFY-WAIT]" in line for line in report.lines)
+    assert any("[PUBLIC-BROWSER-VERIFY-CLEARED]" in line for line in report.lines)
+
+
 def test_public_url_pipeline_upgrades_blank_static_scrapling_to_dynamic(tmp_path: Path):
     report = ConversionReport()
     adapter = DummyAdapter()

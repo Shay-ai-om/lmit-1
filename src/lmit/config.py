@@ -98,6 +98,8 @@ class PublicFetchConfig:
     browser_cdp_port: int | None = None
     public_browser_auto_launch: bool = True
     public_browser_profile_dir: Path | None = None
+    public_browser_verification_timeout_seconds: int = 180
+    public_browser_verification_poll_seconds: int = 3
     cdp_first_domains: tuple[str, ...] = ("baidu.com",)
 
 
@@ -407,6 +409,18 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
             public_fetch_data.get("public_browser_profile_dir"),
             default=paths.work_dir / "browser_profiles" / "public",
             base=base,
+        ),
+        public_browser_verification_timeout_seconds=int(
+            public_fetch_data.get(
+                "public_browser_verification_timeout_seconds",
+                cfg.public_fetch.public_browser_verification_timeout_seconds,
+            )
+        ),
+        public_browser_verification_poll_seconds=int(
+            public_fetch_data.get(
+                "public_browser_verification_poll_seconds",
+                cfg.public_fetch.public_browser_verification_poll_seconds,
+            )
         ),
         cdp_first_domains=tuple(
             _normalize_domain(item)
