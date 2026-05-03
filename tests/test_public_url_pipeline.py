@@ -181,6 +181,41 @@ def test_public_url_pipeline_resolves_search_app_redirect_before_scrapling(
     assert any("[PUBLIC-FETCH-REDIRECT]" in line for line in report.lines)
 
 
+def test_public_url_pipeline_resolves_share_google_redirect_before_scrapling(
+    tmp_path: Path,
+    monkeypatch,
+):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(static_result=LONG_TEXT)
+    redirect_calls: list[tuple[str, int]] = []
+
+    def fake_resolve_redirect(url: str, *, timeout_seconds: int) -> str | None:
+        redirect_calls.append((url, timeout_seconds))
+        return "https://www.ithome.com.tw/news/173312"
+
+    monkeypatch.setattr(
+        "lmit.fetchers.public_url.resolve_public_url_redirect",
+        fake_resolve_redirect,
+    )
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(provider="auto", request_timeout_seconds=7),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://share.google/JOiL3qgQw4I01tCAn")
+
+    assert result == LONG_TEXT
+    assert redirect_calls == [("https://share.google/JOiL3qgQw4I01tCAn", 7)]
+    assert scrapling.calls == [("static", "https://www.ithome.com.tw/news/173312")]
+    assert adapter.convert_url_calls == []
+    assert any("[PUBLIC-FETCH-REDIRECT]" in line for line in report.lines)
+
+
 def test_public_url_pipeline_uses_cdp_first_for_matching_domain(tmp_path: Path):
     report = ConversionReport()
     adapter = DummyAdapter()

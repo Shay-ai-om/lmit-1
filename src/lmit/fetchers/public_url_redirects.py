@@ -7,7 +7,9 @@ import requests
 
 _REDIRECT_ONLY_HOSTS = {
     "search.app",
+    "share.google",
     "www.search.app",
+    "www.share.google",
 }
 
 _REDIRECT_HEADERS = {
