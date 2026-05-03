@@ -9,6 +9,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 import argparse
 import os
+import re
 import sys
 import traceback
 
@@ -587,7 +588,7 @@ class RawMarkdownGui:
 
     def _append_log(self, line: str) -> None:
         self.log_text.configure(state="normal")
-        self.log_text.insert(self.tk.END, line.rstrip() + "\n")
+        self.log_text.insert(self.tk.END, format_gui_log_line(line) + "\n")
         self.log_text.see(self.tk.END)
         self.log_text.configure(state="disabled")
 
@@ -631,6 +632,17 @@ class RawMarkdownGui:
 
 def current_timestamp() -> str:
     return _format_timestamp(datetime.now().astimezone())
+
+
+_TIMESTAMPED_LOG_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?: [^\]]+)?\]")
+
+
+def format_gui_log_line(line: str, *, now: datetime | None = None) -> str:
+    text = line.rstrip()
+    if _TIMESTAMPED_LOG_RE.match(text):
+        return text
+    timestamp = _format_timestamp(now or datetime.now().astimezone())
+    return f"[{timestamp}] {text}"
 
 
 def _format_timestamp(value: datetime) -> str:
