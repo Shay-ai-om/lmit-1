@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 
 import pytest
 
@@ -144,6 +144,41 @@ def test_public_url_pipeline_normalizes_url_before_fetching(tmp_path: Path):
     assert result == "legacy markdown"
     assert adapter.convert_url_calls == ["https://tieba.baidu.com/p/9152102978?lp=5027"]
     assert any("[PUBLIC-FETCH-NORMALIZED]" in line for line in report.lines)
+
+
+def test_public_url_pipeline_resolves_search_app_redirect_before_scrapling(
+    tmp_path: Path,
+    monkeypatch,
+):
+    report = ConversionReport()
+    adapter = DummyAdapter()
+    scrapling = DummyScraplingFetcher(static_result=LONG_TEXT)
+    redirect_calls: list[tuple[str, int]] = []
+
+    def fake_resolve_redirect(url: str, *, timeout_seconds: int) -> str | None:
+        redirect_calls.append((url, timeout_seconds))
+        return "https://sspai.com/post/83644"
+
+    monkeypatch.setattr(
+        "lmit.fetchers.public_url.resolve_public_url_redirect",
+        fake_resolve_redirect,
+    )
+
+    fetcher = PublicUrlFetcher(
+        adapter,
+        work_dir=tmp_path,
+        report=report,
+        public_fetch=PublicFetchConfig(provider="auto", request_timeout_seconds=7),
+        scrapling_fetcher=scrapling,
+    )
+
+    result = fetcher.fetch("https://search.app/PsqCukaJyRGoUVKq9")
+
+    assert result == LONG_TEXT
+    assert redirect_calls == [("https://search.app/PsqCukaJyRGoUVKq9", 7)]
+    assert scrapling.calls == [("static", "https://sspai.com/post/83644")]
+    assert adapter.convert_url_calls == []
+    assert any("[PUBLIC-FETCH-REDIRECT]" in line for line in report.lines)
 
 
 def test_public_url_pipeline_uses_cdp_first_for_matching_domain(tmp_path: Path):
@@ -431,6 +466,50 @@ def test_public_url_scrapling_dynamic_can_cancel_mid_fetch():
             fetcher.fetch_dynamic("https://example.com/article")
     finally:
         release.set()
+
+
+def test_public_url_scrapling_dynamic_times_out_when_fetcher_hangs():
+    release = Event()
+    outcome: list[object] = []
+
+    class ControlledScraplingFetcher(PublicUrlScraplingFetcher):
+        def _load_fetchers(self):
+            class FakeStaticFetcher:
+                @classmethod
+                def get(cls, url: str, timeout: int):
+                    return LONG_TEXT
+
+            class HangingDynamicFetcher:
+                @classmethod
+                def fetch(cls, url: str, **kwargs):
+                    release.wait(timeout=5)
+                    return LONG_TEXT
+
+            return FakeStaticFetcher, HangingDynamicFetcher
+
+    def run_fetch() -> None:
+        try:
+            ControlledScraplingFetcher(
+                PublicFetchConfig(navigation_timeout_ms=50)
+            ).fetch_dynamic("https://search.app/PsqCukaJyRGoUVKq9")
+        except BaseException as exc:
+            outcome.append(exc)
+        else:
+            outcome.append("returned")
+
+    thread = Thread(target=run_fetch, daemon=True)
+    try:
+        thread.start()
+        thread.join(timeout=0.8)
+        still_running = thread.is_alive()
+    finally:
+        release.set()
+        thread.join(timeout=1)
+
+    assert not still_running
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], TimeoutError)
+    assert "Scrapling fetch timed out" in str(outcome[0])
 
 
 def test_public_url_pipeline_upgrades_blocked_dynamic_scrapling_to_stealthy(tmp_path: Path):

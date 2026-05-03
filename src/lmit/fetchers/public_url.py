@@ -17,6 +17,7 @@ from lmit.fetchers.public_url_quality import (
     is_cloudflare_challenge_public_url_text,
     is_too_short_public_url_text,
 )
+from lmit.fetchers.public_url_redirects import resolve_public_url_redirect
 from lmit.fetchers.public_url_scrapling import PublicUrlScraplingFetcher
 from lmit.reports import ConversionReport
 from lmit.sessions.launch import (
@@ -64,6 +65,7 @@ class PublicUrlFetcher:
                 f"source={url} target={fetch_url} "
                 f"reasons={','.join(normalized_url.reasons) or 'none'}"
             )
+        fetch_url = self._resolve_redirect(fetch_url)
         npm_package_url = parse_npm_package_url(url)
         if npm_package_url is not None:
             self._log(f"[NPM-REGISTRY-FETCH] {npm_package_url.package_name}")
@@ -94,6 +96,26 @@ class PublicUrlFetcher:
         result, stage_name = self._fetch_with_public_pipeline(url, fetch_url=fetch_url)
         self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
         return result
+
+    def _resolve_redirect(self, url: str) -> str:
+        try:
+            redirected_url = resolve_public_url_redirect(
+                url,
+                timeout_seconds=self.public_fetch.request_timeout_seconds,
+            )
+        except Exception as exc:
+            self._log(
+                "[PUBLIC-FETCH-REDIRECT-FAILED] "
+                f"url={url} error={exc!r}"
+            )
+            return url
+        if not redirected_url or redirected_url == url:
+            return url
+        self._log(
+            "[PUBLIC-FETCH-REDIRECT] "
+            f"source={url} target={redirected_url}"
+        )
+        return redirected_url
 
     def _try_cdp_first(self, url: str, *, fetch_url: str) -> tuple[str, str] | None:
         if not self._should_use_cdp_first(fetch_url):

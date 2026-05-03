@@ -5,6 +5,7 @@ import json
 import re
 from queue import Empty, Queue
 from threading import Thread
+from time import monotonic
 
 from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import PublicFetchConfig
@@ -194,6 +195,8 @@ class PublicUrlScraplingFetcher:
     def _run_cancellable_fetch(self, fetch_fn, url: str, **kwargs):
         self.cancel_check()
         result_queue: Queue[tuple[str, object]] = Queue(maxsize=1)
+        watchdog_seconds = self._watchdog_seconds(kwargs.get("timeout"))
+        deadline = monotonic() + watchdog_seconds
 
         def runner() -> None:
             try:
@@ -206,13 +209,27 @@ class PublicUrlScraplingFetcher:
 
         while True:
             self.cancel_check()
+            remaining_seconds = deadline - monotonic()
+            if remaining_seconds <= 0:
+                raise TimeoutError(
+                    f"Scrapling fetch timed out after {watchdog_seconds:.1f}s for {url}"
+                )
             try:
-                kind, payload = result_queue.get(timeout=0.2)
+                kind, payload = result_queue.get(timeout=min(0.2, remaining_seconds))
             except Empty:
                 continue
             if kind == "error":
                 raise payload
             return payload
+
+    def _watchdog_seconds(self, timeout_ms: object) -> float:
+        try:
+            base_ms = int(timeout_ms)
+        except (TypeError, ValueError):
+            base_ms = int(self.config.navigation_timeout_ms)
+        base_ms = max(1, base_ms)
+        grace_ms = min(max(base_ms // 10, 250), 5000)
+        return (base_ms + grace_ms) / 1000
 
     def _normalize_response_text(self, response: object) -> str:
         cleanup_mode = self.config.scrapling_cleanup.strip().lower()
