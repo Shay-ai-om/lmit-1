@@ -11,6 +11,7 @@ from lmit.sessions.launch import (
     login_profile_dir,
     login_uses_cdp,
     login_uses_persistent_context,
+    windows_browser_candidates,
 )
 
 
@@ -46,6 +47,13 @@ def test_browser_launch_options_include_channel_when_configured(tmp_path: Path):
         "args": ["--disable-blink-features=AutomationControlled"],
         "channel": "msedge",
     }
+
+
+def test_windows_browser_candidates_defaults_to_chrome_then_edge():
+    candidates = windows_browser_candidates(None)
+
+    assert any("Google" in str(candidate) for candidate in candidates)
+    assert any("Microsoft" in str(candidate) for candidate in candidates)
 
 
 def test_login_uses_persistent_context_when_enabled(tmp_path: Path):

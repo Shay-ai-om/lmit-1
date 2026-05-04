@@ -95,6 +95,14 @@ llm_prompt = "Write a detailed caption for this image."
 provider = "auto"
 enable_scrapling = true
 enable_scrapling_dynamic = true
+# Optional high-cost fallback for JS-heavy or Cloudflare-like public pages.
+# This opens Scrapling's stealth browser path only after static/dynamic results
+# are blank, blocked, too short, or failed.
+enable_scrapling_stealthy = false
+# Keep this on to run StealthyFetcher only when a Cloudflare challenge is
+# detected, without enabling stealth mode for ordinary public pages.
+enable_scrapling_stealthy_on_cloudflare = true
+scrapling_stealthy_solve_cloudflare = true
 scrapling_cleanup = "ai_targeted"
 scrapling_block_ads = true
 request_timeout_seconds = 30
@@ -105,9 +113,22 @@ min_meaningful_chars = 200
 #
 # Optional: attach public-URL browser fallback to a real browser you launched
 # with a CDP port. This can help with sites that treat plain automation traffic
-# differently from a normal browser session.
+# differently from a normal browser session. CDP-first domains below use this
+# same auto-launched browser even when browser_connect_over_cdp remains false.
 # browser_connect_over_cdp = true
 # browser_cdp_port = 9225
+public_browser_auto_launch = true
+public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+# When a real public browser shows a verification page (for example Baidu
+# security checks), keep polling the same page so you can finish verification
+# manually before content extraction continues.
+public_browser_verification_timeout_seconds = 180
+public_browser_verification_poll_seconds = 3
+#
+# For domains that strongly prefer an already-open real browser session, try
+# CDP first before Scrapling/MarkItDown. Parent domains match subdomains, so
+# "baidu.com" also matches "tieba.baidu.com".
+cdp_first_domains = ["baidu.com"]
 # Set provider = "legacy" to roll public URLs back to the older MarkItDown-first flow.
 
 [polling]
@@ -183,6 +204,7 @@ domains = [
   "www.reddit.com",
   "old.reddit.com",
   "new.reddit.com",
+  "redd.it",
 ]
 login_url = "https://www.reddit.com/login/"
 state_file = "sessions/reddit_state.json"

@@ -182,6 +182,32 @@ Public URLs use the new Scrapling-first pipeline when `provider = "auto"`. Sessi
 
 If Scrapling is not installed, that public pipeline falls back automatically to the legacy MarkItDown provider.
 
+For JS-heavy or Cloudflare-like public pages, you can enable Scrapling's
+StealthyFetcher as a later fallback. It is disabled by default because it can
+open a stealth browser and wait longer for challenge pages:
+
+```toml
+[public_fetch]
+provider = "auto"
+enable_scrapling = true
+enable_scrapling_dynamic = true
+enable_scrapling_stealthy = true
+scrapling_stealthy_solve_cloudflare = true
+```
+
+If you only want that higher-cost path for Cloudflare challenge pages, leave
+general stealth mode off and keep Cloudflare auto-detection on:
+
+```toml
+[public_fetch]
+provider = "auto"
+enable_scrapling = true
+enable_scrapling_dynamic = true
+enable_scrapling_stealthy = false
+enable_scrapling_stealthy_on_cloudflare = true
+scrapling_stealthy_solve_cloudflare = true
+```
+
 To roll public URLs back to the older MarkItDown-first flow, set:
 
 ```toml
@@ -207,6 +233,27 @@ Then start Chrome or Edge yourself with remote debugging enabled before running 
 ```
 
 Open the target page in that browser once, confirm it loads normally, then run LMIT. When `browser_connect_over_cdp = true`, the public-URL browser fallback reuses that real browser context instead of launching a fresh Playwright browser.
+
+For domains that should use that already-open browser before Scrapling or
+MarkItDown, add `cdp_first_domains`. Parent domains match subdomains, so
+`baidu.com` also covers `tieba.baidu.com`. LMIT can launch that CDP browser
+itself with a persistent profile, so you do not need to start remote debugging
+by hand. The default config enables this for Baidu/Tieba:
+
+```toml
+[public_fetch]
+provider = "auto"
+public_browser_auto_launch = true
+public_browser_profile_dir = ".lmit_work/browser_profiles/public"
+public_browser_verification_timeout_seconds = 180
+public_browser_verification_poll_seconds = 3
+cdp_first_domains = ["baidu.com"]
+```
+
+When the browser opens for a challenged site, complete the verification in that
+window once. If the page still looks like a security check after navigation,
+LMIT waits and polls the same browser tab until the verification clears or the
+configured timeout expires. Later runs reuse the same profile and cookies.
 
 For a dry run that preserves links but does not fetch page content:
 
@@ -319,7 +366,7 @@ The social-site examples are configured to avoid the default fresh Playwright Ch
 - `youtube`: persistent Google Chrome profile
 - `x`: persistent Microsoft Edge profile
 
-They also enable `login_connect_over_cdp`, which means LMIT launches the real browser executable first and then attaches to it over Chrome DevTools Protocol, instead of asking Playwright to launch the login window directly.
+They also enable `login_connect_over_cdp`, which means LMIT launches the real browser executable first and then attaches to it over Chrome DevTools Protocol, instead of asking Playwright to launch the login window directly. Conversion uses the same CDP profile for those session sites, so Reddit, YouTube, and X can reuse the real browser cookies/profile during fetches rather than falling back to a fresh Playwright browser.
 
 This helps with repeated bot-challenge loops on sites that dislike the default Playwright browser fingerprint. If you want to change browser channel, edit the matching session block. For example:
 

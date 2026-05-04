@@ -9,6 +9,11 @@ BLOCKED_PUBLIC_URL_MARKERS = (
     "cloudflare ray id",
     "sign in to continue",
     "log in to continue",
+    "you've been blocked by network security",
+    "you have been blocked by network security",
+    "blocked by network security",
+    "file a ticket",
+    "support.reddithelp.com/hc/en-us/requests/new",
     "mobile@digitimes.com",
     "百度安全验证",
     "请完成下方验证后继续操作",
@@ -29,6 +34,27 @@ BLOCKED_PUBLIC_URL_MARKERS = (
 )
 
 
+_CLOUDFLARE_CHALLENGE_MARKERS = (
+    "cloudflare ray id",
+    "cf-browser-verification",
+    "cf-chl",
+    "cf_chl",
+    "__cf_chl",
+    "cdn-cgi/challenge-platform",
+    "challenges.cloudflare.com",
+    "cf-turnstile",
+    "turnstile.render",
+    "checking if the site connection is secure",
+    "needs to review the security of your connection",
+    "verify you are human by completing the action below",
+)
+
+
 def is_blocked_public_url_text(text: str) -> bool:
     lowered = text.lower()
     return any(marker in lowered for marker in BLOCKED_PUBLIC_URL_MARKERS)
+
+
+def is_cloudflare_challenge_public_url_text(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _CLOUDFLARE_CHALLENGE_MARKERS)

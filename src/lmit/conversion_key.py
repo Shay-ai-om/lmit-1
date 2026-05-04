@@ -25,10 +25,17 @@ def conversion_key(cfg: AppConfig) -> str:
         "public_fetch": {
             # Bump this when the public-URL extraction pipeline changes in a
             # way that should invalidate previously "unchanged" outputs.
-            "algorithm": 2,
+            "algorithm": 3,
             "provider": cfg.public_fetch.provider,
             "enable_scrapling": cfg.public_fetch.enable_scrapling,
             "enable_scrapling_dynamic": cfg.public_fetch.enable_scrapling_dynamic,
+            "enable_scrapling_stealthy": cfg.public_fetch.enable_scrapling_stealthy,
+            "enable_scrapling_stealthy_on_cloudflare": (
+                cfg.public_fetch.enable_scrapling_stealthy_on_cloudflare
+            ),
+            "scrapling_stealthy_solve_cloudflare": (
+                cfg.public_fetch.scrapling_stealthy_solve_cloudflare
+            ),
             "scrapling_cleanup": cfg.public_fetch.scrapling_cleanup,
             "scrapling_block_ads": cfg.public_fetch.scrapling_block_ads,
             "request_timeout_seconds": cfg.public_fetch.request_timeout_seconds,
@@ -42,6 +49,19 @@ def conversion_key(cfg: AppConfig) -> str:
             ),
             "browser_connect_over_cdp": cfg.public_fetch.browser_connect_over_cdp,
             "browser_cdp_port": cfg.public_fetch.browser_cdp_port,
+            "public_browser_auto_launch": cfg.public_fetch.public_browser_auto_launch,
+            "public_browser_profile_dir": (
+                str(cfg.public_fetch.public_browser_profile_dir)
+                if cfg.public_fetch.public_browser_profile_dir is not None
+                else None
+            ),
+            "public_browser_verification_timeout_seconds": (
+                cfg.public_fetch.public_browser_verification_timeout_seconds
+            ),
+            "public_browser_verification_poll_seconds": (
+                cfg.public_fetch.public_browser_verification_poll_seconds
+            ),
+            "cdp_first_domains": sorted(cfg.public_fetch.cdp_first_domains),
         },
         "session_sites": [
             {

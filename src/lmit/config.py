@@ -84,6 +84,9 @@ class PublicFetchConfig:
     provider: str = "auto"
     enable_scrapling: bool = True
     enable_scrapling_dynamic: bool = True
+    enable_scrapling_stealthy: bool = False
+    enable_scrapling_stealthy_on_cloudflare: bool = True
+    scrapling_stealthy_solve_cloudflare: bool = True
     scrapling_cleanup: str = "ai_targeted"
     scrapling_block_ads: bool = True
     request_timeout_seconds: int = 30
@@ -93,6 +96,11 @@ class PublicFetchConfig:
     browser_executable_path: Path | None = None
     browser_connect_over_cdp: bool = False
     browser_cdp_port: int | None = None
+    public_browser_auto_launch: bool = True
+    public_browser_profile_dir: Path | None = None
+    public_browser_verification_timeout_seconds: int = 180
+    public_browser_verification_poll_seconds: int = 3
+    cdp_first_domains: tuple[str, ...] = ("baidu.com",)
 
 
 @dataclass(frozen=True)
@@ -329,6 +337,24 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
                 cfg.public_fetch.enable_scrapling_dynamic,
             )
         ),
+        enable_scrapling_stealthy=bool(
+            public_fetch_data.get(
+                "enable_scrapling_stealthy",
+                cfg.public_fetch.enable_scrapling_stealthy,
+            )
+        ),
+        enable_scrapling_stealthy_on_cloudflare=bool(
+            public_fetch_data.get(
+                "enable_scrapling_stealthy_on_cloudflare",
+                cfg.public_fetch.enable_scrapling_stealthy_on_cloudflare,
+            )
+        ),
+        scrapling_stealthy_solve_cloudflare=bool(
+            public_fetch_data.get(
+                "scrapling_stealthy_solve_cloudflare",
+                cfg.public_fetch.scrapling_stealthy_solve_cloudflare,
+            )
+        ),
         scrapling_cleanup=str(
             public_fetch_data.get("scrapling_cleanup", cfg.public_fetch.scrapling_cleanup)
         ),
@@ -372,6 +398,37 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         ),
         browser_cdp_port=_optional_int(
             public_fetch_data.get("browser_cdp_port", cfg.public_fetch.browser_cdp_port)
+        ),
+        public_browser_auto_launch=bool(
+            public_fetch_data.get(
+                "public_browser_auto_launch",
+                cfg.public_fetch.public_browser_auto_launch,
+            )
+        ),
+        public_browser_profile_dir=_resolve_optional_path(
+            public_fetch_data.get("public_browser_profile_dir"),
+            default=paths.work_dir / "browser_profiles" / "public",
+            base=base,
+        ),
+        public_browser_verification_timeout_seconds=int(
+            public_fetch_data.get(
+                "public_browser_verification_timeout_seconds",
+                cfg.public_fetch.public_browser_verification_timeout_seconds,
+            )
+        ),
+        public_browser_verification_poll_seconds=int(
+            public_fetch_data.get(
+                "public_browser_verification_poll_seconds",
+                cfg.public_fetch.public_browser_verification_poll_seconds,
+            )
+        ),
+        cdp_first_domains=tuple(
+            _normalize_domain(item)
+            for item in public_fetch_data.get(
+                "cdp_first_domains",
+                cfg.public_fetch.cdp_first_domains,
+            )
+            if _normalize_domain(item)
         ),
     )
 
@@ -619,6 +676,14 @@ def _normalize_exts(items: Any) -> set[str]:
         str(item).lower() if str(item).startswith(".") else f".{item}".lower()
         for item in items
     }
+
+
+def _normalize_domain(value: Any) -> str:
+    text = str(value).strip().lower().rstrip(".")
+    if text.startswith("http://") or text.startswith("https://"):
+        text = text.split("://", 1)[1]
+    text = text.split("/", 1)[0].split(":", 1)[0].lstrip(".")
+    return text
 
 
 def _optional_string(value: Any) -> str | None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from hashlib import sha256
 from pathlib import Path
+import subprocess
+from urllib.parse import urlparse
 
 from lmit.cancellation import CancelCheck, noop_cancel_check
 from lmit.config import PublicFetchConfig
@@ -12,12 +14,15 @@ from lmit.fetchers.public_url_quality import (
     count_meaningful_visible_chars,
     is_blank_public_url_text,
     is_blocked_public_url_text,
+    is_cloudflare_challenge_public_url_text,
     is_too_short_public_url_text,
 )
+from lmit.fetchers.public_url_redirects import resolve_public_url_redirect
 from lmit.fetchers.public_url_scrapling import PublicUrlScraplingFetcher
 from lmit.reports import ConversionReport
 from lmit.sessions.launch import (
     apply_stealth,
+    browser_executable_for_channel,
     generic_browser_launch_options,
     wait_for_cdp_endpoint,
 )
@@ -60,6 +65,7 @@ class PublicUrlFetcher:
                 f"source={url} target={fetch_url} "
                 f"reasons={','.join(normalized_url.reasons) or 'none'}"
             )
+        fetch_url = self._resolve_redirect(fetch_url)
         npm_package_url = parse_npm_package_url(url)
         if npm_package_url is not None:
             self._log(f"[NPM-REGISTRY-FETCH] {npm_package_url.package_name}")
@@ -70,16 +76,91 @@ class PublicUrlFetcher:
             "[PUBLIC-FETCH-PROVIDER] "
             f"url={url} provider={provider} "
             f"scrapling={self.public_fetch.enable_scrapling} "
-            f"dynamic={self.public_fetch.enable_scrapling_dynamic}"
+            f"dynamic={self.public_fetch.enable_scrapling_dynamic} "
+            f"stealthy={self.public_fetch.enable_scrapling_stealthy} "
+            f"stealthy_cloudflare={self.public_fetch.enable_scrapling_stealthy_on_cloudflare} "
+            f"cdp_first={','.join(self.public_fetch.cdp_first_domains) or 'none'} "
+            f"public_browser_auto_launch={self.public_fetch.public_browser_auto_launch}"
         )
         if provider == "legacy":
             result, stage_name = self._fetch_legacy(url, fetch_url=fetch_url)
             self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
             return result
 
+        cdp_first_result = self._try_cdp_first(url, fetch_url=fetch_url)
+        if cdp_first_result is not None:
+            result, stage_name = cdp_first_result
+            self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
+            return result
+
         result, stage_name = self._fetch_with_public_pipeline(url, fetch_url=fetch_url)
         self._log(f"[PUBLIC-FETCH-DONE] url={url} stage={stage_name}")
         return result
+
+    def _resolve_redirect(self, url: str) -> str:
+        try:
+            redirected_url = resolve_public_url_redirect(
+                url,
+                timeout_seconds=self.public_fetch.request_timeout_seconds,
+            )
+        except Exception as exc:
+            self._log(
+                "[PUBLIC-FETCH-REDIRECT-FAILED] "
+                f"url={url} error={exc!r}"
+            )
+            return url
+        if not redirected_url or redirected_url == url:
+            return url
+        self._log(
+            "[PUBLIC-FETCH-REDIRECT] "
+            f"source={url} target={redirected_url}"
+        )
+        return redirected_url
+
+    def _try_cdp_first(self, url: str, *, fetch_url: str) -> tuple[str, str] | None:
+        if not self._should_use_cdp_first(fetch_url):
+            return None
+        if self.work_dir is None:
+            self._log(
+                "[PUBLIC-FETCH-CDP-FIRST-SKIP] "
+                f"url={url} reason=missing_work_dir"
+            )
+            return None
+
+        self._log(f"[PUBLIC-FETCH-CDP-FIRST] url={url}")
+        self.cancel_check()
+        try:
+            text, stage_name = self._fetch_browser_stage(
+                url,
+                fetch_url=fetch_url,
+                force_attached=True,
+            )
+        except Exception as exc:
+            self._log(
+                "[PUBLIC-FETCH-CDP-FIRST-FAILED] "
+                f"url={url} error={exc!r}"
+            )
+            return None
+
+        quality = self._quality_reason(text)
+        if quality is None:
+            return text, stage_name
+
+        self._log(
+            "[PUBLIC-FETCH-CDP-FIRST-FALLBACK] "
+            f"url={url} reason={quality}"
+        )
+        self._count_quality_retry(quality)
+        return None
+
+    def _should_use_cdp_first(self, url: str) -> bool:
+        domains = self.public_fetch.cdp_first_domains
+        if not domains:
+            return False
+        host = (urlparse(url).hostname or "").lower().rstrip(".")
+        if not host:
+            return False
+        return any(_host_matches_domain(host, domain) for domain in domains)
 
     def _fetch_with_public_pipeline(self, url: str, *, fetch_url: str) -> tuple[str, str]:
         if self.public_fetch.enable_scrapling:
@@ -92,6 +173,7 @@ class PublicUrlFetcher:
             )
             if static_result.text is not None and static_result.quality is None:
                 return static_result.text, "scrapling_static"
+            dynamic_result: _StageResult | None = None
             if self.public_fetch.enable_scrapling_dynamic:
                 reason = static_result.quality or static_result.failure_reason or "needed"
                 self._log(
@@ -109,8 +191,27 @@ class PublicUrlFetcher:
                 if dynamic_result.text is not None and dynamic_result.quality is None:
                     return dynamic_result.text, "scrapling_dynamic"
                 reason = dynamic_result.quality or dynamic_result.failure_reason or "needed"
+                from_stage = "scrapling_dynamic"
             else:
                 reason = static_result.quality or static_result.failure_reason or "needed"
+                from_stage = "scrapling_static"
+
+            if self._should_try_stealthy(reason, static_result, dynamic_result):
+                self._log(
+                    "[PUBLIC-FETCH-UPGRADE] "
+                    f"url={url} from_stage={from_stage} "
+                    f"upgrade=scrapling_stealthy reason={reason}"
+                )
+                self._count_quality_retry(reason)
+                self.cancel_check()
+                stealthy_result = self._try_stage(
+                    "scrapling_stealthy",
+                    url,
+                    lambda _: scrapling_fetcher.fetch_stealthy(fetch_url),
+                )
+                if stealthy_result.text is not None and stealthy_result.quality is None:
+                    return stealthy_result.text, "scrapling_stealthy"
+                reason = stealthy_result.quality or stealthy_result.failure_reason or "needed"
         else:
             reason = "scrapling_disabled"
 
@@ -185,9 +286,15 @@ class PublicUrlFetcher:
                 self._log(f"[PUBLIC-BROWSER-FALLBACK-FAILED] {url}: {fallback_exc!r}")
                 raise original_exc from fallback_exc
 
-    def _fetch_browser_stage(self, url: str, *, fetch_url: str) -> tuple[str, str]:
+    def _fetch_browser_stage(
+        self,
+        url: str,
+        *,
+        fetch_url: str,
+        force_attached: bool = False,
+    ) -> tuple[str, str]:
         self.cancel_check()
-        text = self._fetch_with_browser(fetch_url)
+        text = self._fetch_with_browser(fetch_url, force_attached=force_attached)
         quality = self._quality_reason(text)
         if quality is None:
             self._log_stage_success("legacy_playwright_html", url, text)
@@ -195,7 +302,7 @@ class PublicUrlFetcher:
             self._log_stage_quality("legacy_playwright_html", url, text, quality)
         return text, "legacy_playwright_html"
 
-    def _fetch_with_browser(self, url: str) -> str:
+    def _fetch_with_browser(self, url: str, *, force_attached: bool = False) -> str:
         try:
             from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
             from playwright.sync_api import sync_playwright
@@ -210,7 +317,7 @@ class PublicUrlFetcher:
 
         with sync_playwright() as p:
             self.cancel_check()
-            if self.public_fetch.browser_connect_over_cdp:
+            if force_attached or self.public_fetch.browser_connect_over_cdp:
                 html = self._fetch_with_attached_browser(
                     p,
                     url,
@@ -261,6 +368,7 @@ class PublicUrlFetcher:
         port = self.public_fetch.browser_cdp_port or 9225
         endpoint = f"http://127.0.0.1:{port}"
         self._log(f"[PUBLIC-BROWSER-ATTACH] endpoint={endpoint}")
+        self._ensure_public_cdp_browser(endpoint, port=port, url=url)
         wait_for_cdp_endpoint(
             endpoint,
             timeout_seconds=max(5, self.navigation_timeout_ms / 1000),
@@ -279,6 +387,7 @@ class PublicUrlFetcher:
                     page,
                     url,
                     playwright_timeout_error=playwright_timeout_error,
+                    wait_for_verification=True,
                 )
                 return page.content()
             finally:
@@ -289,12 +398,51 @@ class PublicUrlFetcher:
             except AttributeError:
                 pass
 
+    def _ensure_public_cdp_browser(self, endpoint: str, *, port: int, url: str) -> None:
+        if not self.public_fetch.public_browser_auto_launch:
+            return
+        try:
+            wait_for_cdp_endpoint(endpoint, timeout_seconds=1)
+            return
+        except TimeoutError:
+            pass
+
+        profile_dir = (
+            self.public_fetch.public_browser_profile_dir
+            or (self.work_dir / "browser_profiles" / "public")
+        )
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        executable = browser_executable_for_channel(
+            channel=self.public_fetch.browser_channel,
+            executable_path=self.public_fetch.browser_executable_path,
+            label="public_fetch",
+        )
+        self._log(
+            "[PUBLIC-BROWSER-LAUNCH] "
+            f"executable={executable} profile={profile_dir} port={port}"
+        )
+        subprocess.Popen(
+            [
+                str(executable),
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-popup-blocking",
+                "--new-window",
+                url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
     def _load_browser_page(
         self,
         page,
         url: str,
         *,
         playwright_timeout_error,
+        wait_for_verification: bool = False,
     ) -> None:
         page.goto(
             url,
@@ -307,10 +455,78 @@ class PublicUrlFetcher:
             self._log(f"[WARN] networkidle timeout for public URL: {url}")
         self.cancel_check()
         page.wait_for_timeout(3000)
+        if wait_for_verification:
+            self._wait_for_manual_verification(
+                page,
+                url,
+                playwright_timeout_error=playwright_timeout_error,
+            )
+
+    def _wait_for_manual_verification(
+        self,
+        page,
+        url: str,
+        *,
+        playwright_timeout_error,
+    ) -> None:
+        if not self._page_text_is_blocked(page):
+            return
+
+        timeout_seconds = max(
+            0,
+            int(self.public_fetch.public_browser_verification_timeout_seconds),
+        )
+        poll_seconds = max(
+            1,
+            int(self.public_fetch.public_browser_verification_poll_seconds),
+        )
+        if timeout_seconds <= 0:
+            return
+
+        deadline_ms = timeout_seconds * 1000
+        elapsed_ms = 0
+        self._log(
+            "[PUBLIC-BROWSER-VERIFY-WAIT] "
+            f"url={url} timeout_seconds={timeout_seconds}"
+        )
+        while elapsed_ms < deadline_ms:
+            self.cancel_check()
+            wait_ms = min(poll_seconds * 1000, deadline_ms - elapsed_ms)
+            page.wait_for_timeout(wait_ms)
+            elapsed_ms += wait_ms
+            try:
+                page.wait_for_load_state("networkidle", timeout=2000)
+            except playwright_timeout_error:
+                pass
+            if not self._page_text_is_blocked(page):
+                page.wait_for_timeout(2000)
+                self._log(
+                    "[PUBLIC-BROWSER-VERIFY-CLEARED] "
+                    f"url={url} waited_seconds={elapsed_ms / 1000:.0f}"
+                )
+                return
+
+        self._log(
+            "[PUBLIC-BROWSER-VERIFY-TIMEOUT] "
+            f"url={url} waited_seconds={timeout_seconds}"
+        )
+
+    def _page_text_is_blocked(self, page) -> bool:
+        try:
+            text = page.inner_text("body", timeout=3000)
+        except Exception:
+            try:
+                text = page.content()
+            except Exception:
+                return False
+        return is_blocked_public_url_text(text)
 
     def _get_scrapling_fetcher(self):
         if self._scrapling_fetcher is None:
-            self._scrapling_fetcher = PublicUrlScraplingFetcher(self.public_fetch)
+            self._scrapling_fetcher = PublicUrlScraplingFetcher(
+                self.public_fetch,
+                cancel_check=self.cancel_check,
+            )
         return self._scrapling_fetcher
 
     def _try_stage(self, stage_name: str, url: str, fetcher) -> _StageResult:
@@ -343,6 +559,27 @@ class PublicUrlFetcher:
             return "too_short"
         return None
 
+    def _should_try_stealthy(
+        self,
+        reason: str | None,
+        static_result: _StageResult,
+        dynamic_result: _StageResult | None,
+    ) -> bool:
+        if self.public_fetch.enable_scrapling_stealthy:
+            return True
+        if (
+            not self.public_fetch.enable_scrapling_stealthy_on_cloudflare
+            or not self.public_fetch.scrapling_stealthy_solve_cloudflare
+        ):
+            return False
+        if reason != "blocked":
+            return False
+        return any(
+            is_cloudflare_challenge_public_url_text(result.text)
+            for result in (dynamic_result, static_result)
+            if result is not None
+        )
+
     def _log_stage_success(self, stage_name: str, url: str, text: str | None) -> None:
         self._increment_success_counter(stage_name)
         self._log(
@@ -373,6 +610,7 @@ class PublicUrlFetcher:
         counter_name = {
             "scrapling_static": "public_url_scrapling_static_success",
             "scrapling_dynamic": "public_url_scrapling_dynamic_success",
+            "scrapling_stealthy": "public_url_scrapling_stealthy_success",
             "legacy_markitdown": "public_url_markitdown_success",
             "legacy_playwright_html": "public_url_playwright_success",
         }.get(stage_name)
@@ -410,3 +648,10 @@ class _StageResult:
         self.text = text
         self.quality = quality
         self.failure_reason = failure_reason
+
+
+def _host_matches_domain(host: str, domain: str) -> bool:
+    normalized = domain.strip().lower().rstrip(".").lstrip(".")
+    if not normalized:
+        return False
+    return host == normalized or host.endswith(f".{normalized}")

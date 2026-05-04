@@ -35,6 +35,50 @@ def test_conversion_key_changes_when_public_fetch_cleanup_changes(tmp_path):
     assert conversion_key(cfg) != conversion_key(none_cfg)
 
 
+def test_conversion_key_changes_when_scrapling_stealthy_changes(tmp_path):
+    cfg = default_config(cwd=tmp_path)
+    stealthy_cfg = replace(
+        cfg,
+        public_fetch=replace(cfg.public_fetch, enable_scrapling_stealthy=True),
+    )
+
+    assert conversion_key(cfg) != conversion_key(stealthy_cfg)
+
+
+def test_conversion_key_changes_when_cdp_first_domains_change(tmp_path):
+    cfg = default_config(cwd=tmp_path)
+    cdp_cfg = replace(
+        cfg,
+        public_fetch=replace(cfg.public_fetch, cdp_first_domains=("reddit.com",)),
+    )
+
+    assert conversion_key(cfg) != conversion_key(cdp_cfg)
+
+
+def test_conversion_key_changes_when_public_browser_auto_launch_changes(tmp_path):
+    cfg = default_config(cwd=tmp_path)
+    auto_launch_cfg = replace(
+        cfg,
+        public_fetch=replace(cfg.public_fetch, public_browser_auto_launch=False),
+    )
+
+    assert conversion_key(cfg) != conversion_key(auto_launch_cfg)
+
+
+def test_conversion_key_changes_when_public_browser_verification_wait_changes(tmp_path):
+    cfg = default_config(cwd=tmp_path)
+    wait_cfg = replace(
+        cfg,
+        public_fetch=replace(
+            cfg.public_fetch,
+            public_browser_verification_timeout_seconds=240,
+            public_browser_verification_poll_seconds=5,
+        ),
+    )
+
+    assert conversion_key(cfg) != conversion_key(wait_cfg)
+
+
 def test_conversion_key_changes_when_markitdown_llm_changes(tmp_path):
     cfg = default_config(cwd=tmp_path)
     llm_cfg = replace(

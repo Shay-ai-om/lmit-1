@@ -20,6 +20,9 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
                 'provider = "scrapling"',
                 "enable_scrapling = false",
                 "enable_scrapling_dynamic = false",
+                "enable_scrapling_stealthy = true",
+                "enable_scrapling_stealthy_on_cloudflare = false",
+                "scrapling_stealthy_solve_cloudflare = false",
                 'scrapling_cleanup = "none"',
                 "scrapling_block_ads = false",
                 "request_timeout_seconds = 12",
@@ -28,6 +31,11 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
                 'browser_channel = "chrome"',
                 "browser_connect_over_cdp = true",
                 "browser_cdp_port = 9333",
+                "public_browser_auto_launch = true",
+                'public_browser_profile_dir = ".lmit_work/browser_profiles/baidu"',
+                "public_browser_verification_timeout_seconds = 240",
+                "public_browser_verification_poll_seconds = 5",
+                'cdp_first_domains = ["baidu.com", "https://tieba.baidu.com:443/path"]',
             ]
         ),
         encoding="utf-8",
@@ -39,6 +47,9 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
         provider="scrapling",
         enable_scrapling=False,
         enable_scrapling_dynamic=False,
+        enable_scrapling_stealthy=True,
+        enable_scrapling_stealthy_on_cloudflare=False,
+        scrapling_stealthy_solve_cloudflare=False,
         scrapling_cleanup="none",
         scrapling_block_ads=False,
         request_timeout_seconds=12,
@@ -48,6 +59,11 @@ def test_load_config_overrides_public_fetch_block(tmp_path: Path):
         browser_executable_path=None,
         browser_connect_over_cdp=True,
         browser_cdp_port=9333,
+        public_browser_auto_launch=True,
+        public_browser_profile_dir=tmp_path / ".lmit_work" / "browser_profiles" / "baidu",
+        public_browser_verification_timeout_seconds=240,
+        public_browser_verification_poll_seconds=5,
+        cdp_first_domains=("baidu.com", "tieba.baidu.com"),
     )
 
 

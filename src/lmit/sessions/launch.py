@@ -117,6 +117,13 @@ def windows_browser_candidates(channel: str | None) -> list[Path]:
             Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
             Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
         ]
+    if not channel_name:
+        return [
+            Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+            Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+            Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        ]
     return []
 
 

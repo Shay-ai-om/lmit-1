@@ -9,6 +9,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 import argparse
 import os
+import re
 import sys
 import traceback
 
@@ -122,8 +123,8 @@ class RawMarkdownGui:
         ttk = self.ttk
 
         self.root.title("LMIT Raw Markdown 監控台")
-        self.root.geometry("980x720")
-        self.root.minsize(820, 620)
+        self.root.geometry("1040x820")
+        self.root.minsize(900, 760)
 
         style = ttk.Style()
         if "vista" in style.theme_names():
@@ -136,7 +137,7 @@ class RawMarkdownGui:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(2, weight=1)
+        outer.rowconfigure(3, weight=1)
 
         header = ttk.Frame(outer)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
@@ -261,7 +262,7 @@ class RawMarkdownGui:
         self._status_row(status_frame, 3, "最近報告", self.last_report_var)
 
         buttons = ttk.Frame(outer)
-        buttons.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        buttons.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         self.save_button = ttk.Button(buttons, text="儲存設定", command=self.save_settings)
         self.save_button.grid(row=0, column=0, padx=(0, 6))
         self.run_button = ttk.Button(
@@ -283,7 +284,7 @@ class RawMarkdownGui:
         )
 
         log_frame = ttk.LabelFrame(outer, text="執行紀錄")
-        log_frame.grid(row=2, column=0, sticky="nsew", pady=(12, 0))
+        log_frame.grid(row=3, column=0, sticky="nsew", pady=(12, 0))
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
         self.log_text = tk.Text(log_frame, height=12, wrap="word", state="disabled")
@@ -587,7 +588,7 @@ class RawMarkdownGui:
 
     def _append_log(self, line: str) -> None:
         self.log_text.configure(state="normal")
-        self.log_text.insert(self.tk.END, line.rstrip() + "\n")
+        self.log_text.insert(self.tk.END, format_gui_log_line(line) + "\n")
         self.log_text.see(self.tk.END)
         self.log_text.configure(state="disabled")
 
@@ -631,6 +632,17 @@ class RawMarkdownGui:
 
 def current_timestamp() -> str:
     return _format_timestamp(datetime.now().astimezone())
+
+
+_TIMESTAMPED_LOG_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?: [^\]]+)?\]")
+
+
+def format_gui_log_line(line: str, *, now: datetime | None = None) -> str:
+    text = line.rstrip()
+    if _TIMESTAMPED_LOG_RE.match(text):
+        return text
+    timestamp = _format_timestamp(now or datetime.now().astimezone())
+    return f"[{timestamp}] {text}"
 
 
 def _format_timestamp(value: datetime) -> str:
