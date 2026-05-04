@@ -157,7 +157,7 @@ def _strip_markdown_inline(value: str) -> str:
 
 
 def _limit_filename(filename: str, prefix: str, original_name: str, separator: str) -> str:
-    max_filename_chars = 180
+    max_filename_chars = 60
     if len(filename) <= max_filename_chars:
         return filename
     available = max_filename_chars - len(separator) - len(original_name)
