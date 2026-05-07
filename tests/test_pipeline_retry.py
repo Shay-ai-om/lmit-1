@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from pathlib import Path
 
 from lmit.config import PublicFetchConfig, default_config, with_overrides
@@ -130,6 +131,41 @@ def test_run_convert_does_not_mark_unstable_source_missing(tmp_path: Path):
     updated = Manifest.load(manifest_path)
     assert code == 0
     assert updated.records["syncing.md"].status == "success"
+
+
+def test_run_convert_skips_unchanged_when_output_was_moved(tmp_path: Path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    source = input_dir / "note.md"
+    source.write_text("same content", encoding="utf-8")
+
+    cfg = _cfg(tmp_path)
+    manifest_path = tmp_path / "work" / "manifest.json"
+    original_output = tmp_path / "output" / "raw" / "note.md"
+    moved_output = tmp_path / "archive" / "renamed-note.md"
+    moved_output.parent.mkdir(parents=True)
+    moved_output.write_text("manually moved", encoding="utf-8")
+    manifest = Manifest(manifest_path)
+    manifest.update(
+        ScannedFile(
+            path=source.resolve(),
+            relative_path=Path("note.md"),
+            suffix=".md",
+            size=source.stat().st_size,
+            mtime_ns=source.stat().st_mtime_ns,
+            sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        ),
+        original_output,
+        status="success",
+        conversion_key=pipeline.conversion_key(cfg),
+    )
+    manifest.save()
+
+    code = run_convert(cfg)
+
+    assert code == 0
+    assert not original_output.exists()
+    assert moved_output.exists()
 
 
 def test_run_convert_passes_public_fetch_config_to_public_url_fetcher(

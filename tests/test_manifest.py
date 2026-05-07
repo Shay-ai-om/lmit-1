@@ -19,7 +19,7 @@ def test_manifest_detects_unchanged_success(tmp_path: Path):
 
     manifest.update(scanned, output, status="success")
 
-    assert manifest.is_unchanged_success(scanned, output)
+    assert manifest.is_unchanged_success(scanned)
 
 
 def test_manifest_treats_conversion_key_change_as_changed(tmp_path: Path):
@@ -39,7 +39,6 @@ def test_manifest_treats_conversion_key_change_as_changed(tmp_path: Path):
 
     assert not manifest.is_unchanged_success(
         scanned,
-        output,
         conversion_key="with-url-fetch",
     )
 
@@ -63,7 +62,7 @@ def test_manifest_uses_namespaced_key_for_multiple_roots(tmp_path: Path):
     manifest.update(scanned, output, status="success")
 
     assert "input_a/note.txt" in manifest.records
-    assert manifest.is_unchanged_completed(scanned, output)
+    assert manifest.is_unchanged_completed(scanned)
 
 
 def test_manifest_treats_unchanged_partial_as_completed(tmp_path: Path):
@@ -81,8 +80,8 @@ def test_manifest_treats_unchanged_partial_as_completed(tmp_path: Path):
 
     manifest.update(scanned, output, status="partial")
 
-    assert not manifest.is_unchanged_success(scanned, output)
-    assert manifest.is_unchanged_completed(scanned, output)
+    assert not manifest.is_unchanged_success(scanned)
+    assert manifest.is_unchanged_completed(scanned)
 
 
 def test_manifest_returns_unchanged_completed_output_path(tmp_path: Path):
@@ -104,6 +103,24 @@ def test_manifest_returns_unchanged_completed_output_path(tmp_path: Path):
         scanned,
         conversion_key="key",
     ) == output.resolve()
+
+
+def test_manifest_treats_missing_output_as_unchanged_completed(tmp_path: Path):
+    output = tmp_path / "moved-output.md"
+    scanned = ScannedFile(
+        path=(tmp_path / "input.txt").resolve(),
+        relative_path=Path("input.txt"),
+        suffix=".txt",
+        size=3,
+        mtime_ns=10,
+        sha256="abc",
+    )
+    manifest = Manifest(tmp_path / "manifest.json")
+
+    manifest.update(scanned, output, status="success", conversion_key="key")
+
+    assert manifest.is_unchanged_completed(scanned, conversion_key="key")
+    assert manifest.unchanged_completed_output_path(scanned, conversion_key="key") == output.resolve()
 
 
 def test_manifest_marks_missing_without_deleting_output(tmp_path: Path):
