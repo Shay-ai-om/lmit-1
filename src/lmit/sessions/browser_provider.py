@@ -143,7 +143,7 @@ class PlaywrightBrowserProvider:
         endpoint = login_cdp_endpoint(site)
         port = login_cdp_port(site)
         self.report.log(f"[SESSION-BROWSER-ATTACH] {site.name}: endpoint={endpoint}")
-        self._ensure_cdp_browser(site, port=port, target_url=target_url)
+        browser_was_launched = self._ensure_cdp_browser(site, port=port, target_url=target_url)
         wait_for_cdp_endpoint(
             endpoint,
             timeout_seconds=max(5, site.navigation_timeout_ms / 1000),
@@ -156,7 +156,8 @@ class PlaywrightBrowserProvider:
                     raise RuntimeError(f"{site.name}: no browser context found after CDP connect")
                 context = browser.contexts[0]
                 apply_stealth(context)
-                page = context.new_page()
+                reuse_existing_page = browser_was_launched and bool(context.pages)
+                page = context.pages[-1] if reuse_existing_page else context.new_page()
                 try:
                     page.goto(
                         target_url,
@@ -191,7 +192,8 @@ class PlaywrightBrowserProvider:
                         final_url=final_url,
                     )
                 finally:
-                    page.close()
+                    if not reuse_existing_page:
+                        page.close()
             finally:
                 try:
                     browser.disconnect()
@@ -204,11 +206,11 @@ class PlaywrightBrowserProvider:
         *,
         port: int,
         target_url: str,
-    ) -> None:
+    ) -> bool:
         endpoint = login_cdp_endpoint(site)
         try:
             wait_for_cdp_endpoint(endpoint, timeout_seconds=1)
-            return
+            return False
         except TimeoutError:
             pass
 
@@ -233,3 +235,4 @@ class PlaywrightBrowserProvider:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        return True
