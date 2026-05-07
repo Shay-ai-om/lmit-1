@@ -121,6 +121,17 @@ def test_enriched_output_path_sanitizes_windows_filename_chars(tmp_path: Path):
     assert path == (output_root / "A Title With Unsafe Chars__note.md").resolve()
 
 
+def test_enriched_output_path_limits_final_filename_length_to_60_chars():
+    output_root = Path("output").resolve()
+    base = output_root / "very-long-original-name.md"
+    markdown = "# " + ("A" * 120) + "\n\nBody"
+
+    path = enriched_output_path(base, output_root, markdown, _cfg(max_prefix_chars=120))
+
+    assert len(path.name) <= 60
+    assert path.name.endswith("__very-long-original-name.md")
+
+
 def test_enriched_output_path_keeps_existing_title_prefix(tmp_path: Path):
     output_root = tmp_path / "output"
     base = output_root / "OpenClaw-notes.md"

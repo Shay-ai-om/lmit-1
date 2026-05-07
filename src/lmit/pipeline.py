@@ -124,24 +124,20 @@ def run_convert(
         )
 
         if cfg.conversion.skip_unchanged and not cfg.conversion.overwrite:
-            if cfg.output_naming.enrich_filenames:
+            if manifest.is_unchanged_completed(
+                scanned,
+                conversion_key=key,
+            ):
                 cached_path = manifest.unchanged_completed_output_path(
                     scanned,
                     conversion_key=key,
                 )
-                if cached_path is not None:
-                    report.stats.skipped += 1
-                    report.stats.skipped_unchanged += 1
-                    report.log(f"[SKIP-UNCHANGED] {scanned.manifest_key} -> {cached_path}")
-                    continue
-            elif manifest.is_unchanged_completed(
-                scanned,
-                base_out_path,
-                conversion_key=key,
-            ):
                 report.stats.skipped += 1
                 report.stats.skipped_unchanged += 1
-                report.log(f"[SKIP-UNCHANGED] {scanned.manifest_key}")
+                if cached_path is not None and cached_path.exists():
+                    report.log(f"[SKIP-UNCHANGED] {scanned.manifest_key} -> {cached_path}")
+                else:
+                    report.log(f"[SKIP-UNCHANGED] {scanned.manifest_key}")
                 continue
 
         try:

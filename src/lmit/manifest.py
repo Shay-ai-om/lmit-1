@@ -53,7 +53,6 @@ class Manifest:
     def is_unchanged_success(
         self,
         scanned: ScannedFile,
-        output_path: Path,
         *,
         conversion_key: str | None = None,
     ) -> bool:
@@ -67,14 +66,11 @@ class Manifest:
             and record.mtime_ns == scanned.mtime_ns
             and record.sha256 == scanned.sha256
             and record.conversion_key == conversion_key
-            and Path(record.output_path).exists()
-            and Path(record.output_path).resolve() == output_path.resolve()
         )
 
     def is_unchanged_completed(
         self,
         scanned: ScannedFile,
-        output_path: Path,
         *,
         conversion_key: str | None = None,
     ) -> bool:
@@ -88,8 +84,6 @@ class Manifest:
             and record.mtime_ns == scanned.mtime_ns
             and record.sha256 == scanned.sha256
             and record.conversion_key == conversion_key
-            and Path(record.output_path).exists()
-            and Path(record.output_path).resolve() == output_path.resolve()
         )
 
     def unchanged_completed_output_path(
@@ -109,7 +103,6 @@ class Manifest:
             and record.mtime_ns == scanned.mtime_ns
             and record.sha256 == scanned.sha256
             and record.conversion_key == conversion_key
-            and output_path.exists()
         ):
             return output_path.resolve()
         return None

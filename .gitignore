@@ -16,6 +16,7 @@ config/gui.settings.json
 config/*.local.toml
 config/wiki-only.example.toml
 docs/part2/
+docs/architecture.md
 docs/unraid-wiki-only-deployment.md
 src/lmit/wiki/
 tests/test_wiki_*.py
