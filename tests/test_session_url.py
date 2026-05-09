@@ -204,3 +204,229 @@ def test_playwright_provider_launches_cdp_profile_when_endpoint_missing(
     assert f"--user-data-dir={tmp_path / 'reddit_profile'}" in popen_args
     assert "https://www.reddit.com/r/LocalLLaMA/s/abc" in popen_args
     assert any("[SESSION-BROWSER-LAUNCH]" in line for line in report.lines)
+
+
+def test_cdp_fetch_reuses_launched_page_instead_of_opening_second_window(
+    tmp_path: Path,
+    monkeypatch,
+):
+    site = _site(
+        tmp_path,
+        name="youtube",
+        login_connect_over_cdp=True,
+        login_cdp_port=9555,
+        login_persistent_profile_dir=tmp_path / "youtube_profile",
+    )
+    report = ConversionReport()
+    provider = PlaywrightBrowserProvider(
+        adapter=DummyAdapter(),
+        work_dir=tmp_path,
+        report=report,
+    )
+
+    class FakePage:
+        def __init__(self):
+            self.url = "about:blank"
+            self.goto_calls = []
+            self.close_calls = 0
+            self.wait_calls = []
+
+        def goto(self, url, **kwargs):
+            self.goto_calls.append((url, kwargs))
+            self.url = url
+
+        def wait_for_timeout(self, ms):
+            self.wait_calls.append(ms)
+
+        def close(self):
+            self.close_calls += 1
+
+    class FakeContext:
+        def __init__(self, page):
+            self.pages = [page]
+            self.new_page_calls = 0
+            self.init_scripts = []
+
+        def add_init_script(self, script):
+            self.init_scripts.append(script)
+
+        def new_page(self):
+            self.new_page_calls += 1
+            raise AssertionError("should reuse launched page")
+
+    class FakeBrowser:
+        def __init__(self, context):
+            self.contexts = [context]
+            self.disconnected = False
+
+        def disconnect(self):
+            self.disconnected = True
+
+    class FakePlaywright:
+        def __init__(self, browser):
+            self.chromium = self
+            self.browser = browser
+
+        def connect_over_cdp(self, endpoint):
+            return self.browser
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeStrategy:
+        render_mode = "html"
+        wait_for_networkidle = False
+
+        def target_url(self, url):
+            return url
+
+        def temp_html_path(self, work_dir, site, url):
+            return work_dir / "temp.html"
+
+        def context_options(self):
+            return {}
+
+        def after_load(self, page, report):
+            return None
+
+        def extract_markdown(self, page, *, adapter, temp_html, target_url, final_url):
+            return f"markdown:{final_url}"
+
+    launched_page = FakePage()
+    context = FakeContext(launched_page)
+    browser = FakeBrowser(context)
+
+    monkeypatch.setattr(provider, "_ensure_cdp_browser", lambda *args, **kwargs: True)
+    monkeypatch.setattr("lmit.sessions.browser_provider.wait_for_cdp_endpoint", lambda *args, **kwargs: None)
+
+    result = provider._fetch_once_via_cdp(
+        "https://www.youtube.com/watch?v=abc",
+        site,
+        target_url="https://www.youtube.com/watch?v=abc",
+        temp_html=tmp_path / "temp.html",
+        strategy=FakeStrategy(),
+        sync_playwright=lambda: FakePlaywright(browser),
+        playwright_timeout_error=FakePlaywrightTimeoutError,
+    )
+
+    assert result.markdown == "markdown:https://www.youtube.com/watch?v=abc"
+    assert context.new_page_calls == 0
+    assert launched_page.goto_calls
+    assert launched_page.close_calls == 0
+    assert browser.disconnected is True
+
+
+def test_cdp_fetch_opens_temporary_page_when_attaching_to_existing_browser(
+    tmp_path: Path,
+    monkeypatch,
+):
+    site = _site(
+        tmp_path,
+        name="youtube",
+        login_connect_over_cdp=True,
+        login_cdp_port=9555,
+        login_persistent_profile_dir=tmp_path / "youtube_profile",
+    )
+    report = ConversionReport()
+    provider = PlaywrightBrowserProvider(
+        adapter=DummyAdapter(),
+        work_dir=tmp_path,
+        report=report,
+    )
+
+    class FakePage:
+        def __init__(self):
+            self.url = "about:blank"
+            self.goto_calls = []
+            self.close_calls = 0
+
+        def goto(self, url, **kwargs):
+            self.goto_calls.append((url, kwargs))
+            self.url = url
+
+        def wait_for_timeout(self, ms):
+            return None
+
+        def close(self):
+            self.close_calls += 1
+
+    class FakeContext:
+        def __init__(self, existing_page, temp_page):
+            self.pages = [existing_page]
+            self.new_page_calls = 0
+            self.temp_page = temp_page
+            self.init_scripts = []
+
+        def add_init_script(self, script):
+            self.init_scripts.append(script)
+
+        def new_page(self):
+            self.new_page_calls += 1
+            return self.temp_page
+
+    class FakeBrowser:
+        def __init__(self, context):
+            self.contexts = [context]
+
+        def disconnect(self):
+            return None
+
+    class FakePlaywright:
+        def __init__(self, browser):
+            self.chromium = self
+            self.browser = browser
+
+        def connect_over_cdp(self, endpoint):
+            return self.browser
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeStrategy:
+        render_mode = "html"
+        wait_for_networkidle = False
+
+        def target_url(self, url):
+            return url
+
+        def temp_html_path(self, work_dir, site, url):
+            return work_dir / "temp.html"
+
+        def context_options(self):
+            return {}
+
+        def after_load(self, page, report):
+            return None
+
+        def extract_markdown(self, page, *, adapter, temp_html, target_url, final_url):
+            return f"markdown:{final_url}"
+
+    existing_page = FakePage()
+    temp_page = FakePage()
+    context = FakeContext(existing_page, temp_page)
+    browser = FakeBrowser(context)
+
+    monkeypatch.setattr(provider, "_ensure_cdp_browser", lambda *args, **kwargs: False)
+    monkeypatch.setattr("lmit.sessions.browser_provider.wait_for_cdp_endpoint", lambda *args, **kwargs: None)
+
+    result = provider._fetch_once_via_cdp(
+        "https://www.youtube.com/watch?v=abc",
+        site,
+        target_url="https://www.youtube.com/watch?v=abc",
+        temp_html=tmp_path / "temp.html",
+        strategy=FakeStrategy(),
+        sync_playwright=lambda: FakePlaywright(browser),
+        playwright_timeout_error=FakePlaywrightTimeoutError,
+    )
+
+    assert result.markdown == "markdown:https://www.youtube.com/watch?v=abc"
+    assert context.new_page_calls == 1
+    assert not existing_page.goto_calls
+    assert temp_page.goto_calls
+    assert temp_page.close_calls == 1
