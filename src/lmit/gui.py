@@ -128,9 +128,6 @@ class RawMarkdownGui:
         ttk = self.ttk
 
         self.root.title("LMIT Raw Markdown 監控台")
-        self.root.geometry("1040x820")
-        self.root.minsize(900, 760)
-
         style = ttk.Style()
         if "vista" in style.theme_names():
             style.theme_use("vista")
@@ -337,8 +334,20 @@ class RawMarkdownGui:
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self._sync_paddleocr_controls()
+        self._apply_initial_window_size()
 
         self._append_log(f"設定檔：{self.settings_path}")
+
+    def _apply_initial_window_size(self) -> None:
+        self.root.update_idletasks()
+        width, height, min_width, min_height = compute_initial_window_size(
+            requested_width=self.root.winfo_reqwidth(),
+            requested_height=self.root.winfo_reqheight(),
+            screen_width=self.root.winfo_screenwidth(),
+            screen_height=self.root.winfo_screenheight(),
+        )
+        self.root.geometry(f"{width}x{height}")
+        self.root.minsize(min_width, min_height)
 
     def _path_row(self, parent, row: int, label: str, variable, command) -> None:
         ttk = self.ttk
@@ -710,6 +719,22 @@ def format_gui_log_line(line: str, *, now: datetime | None = None) -> str:
 
 def _format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def compute_initial_window_size(
+    *,
+    requested_width: int,
+    requested_height: int,
+    screen_width: int,
+    screen_height: int,
+) -> tuple[int, int, int, int]:
+    min_width = 900
+    min_height = 760
+    target_width = max(1040, requested_width + 32)
+    target_height = max(1040, requested_height + 120)
+    width = min(target_width, max(min_width, screen_width - 80))
+    height = min(target_height, max(min_height, screen_height - 80))
+    return width, height, min_width, min_height
 
 
 def _open_path(path: Path) -> None:

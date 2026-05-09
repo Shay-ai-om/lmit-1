@@ -24,7 +24,7 @@ scrapling = [
 ]
 paddleocr = [
   "paddleocr",
-  "paddlex",
+  "paddlex[ocr]",
   "pypdfium2",
   "Pillow",
 ]

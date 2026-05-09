@@ -224,8 +224,9 @@ class _PaddleXMarkdownProfile:
         except ImportError as exc:
             raise RuntimeError(
                 f"PaddleOCR profile `{self.profile_name}` requires `paddlex`. "
-                "Install it with `pip install -e .[paddleocr]` and ensure the "
-                "matching Paddle runtime is available for your platform."
+                "Install it with `pip install -e .[paddleocr]` so `paddlex[ocr]` "
+                "is available, and ensure the matching Paddle runtime is available "
+                "for your platform."
             ) from exc
 
         self._create_pipeline = create_pipeline

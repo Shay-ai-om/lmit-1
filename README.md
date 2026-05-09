@@ -65,11 +65,11 @@ $env:OPENAI_API_KEY = "sk-..."
 
 LMIT automatically loads `.env` and then `.env.local` from the current working directory at startup. Values already present in the process environment are kept as-is.
 
-Sample config files you can copy from:
+Sample files you can copy from under the project root:
 
-- [C:\codex_projext\LMIT\config\config.example.toml](C:/codex_projext/LMIT/config/config.example.toml) - full project config
-- [C:\codex_projext\LMIT\config\markitdown-llm.sample.toml](C:/codex_projext/LMIT/config/markitdown-llm.sample.toml) - minimal MarkItDown LLM sample
-- [C:\codex_projext\LMIT\.env.sample](C:/codex_projext/LMIT/.env.sample) - sample environment variable file
+- [`config/config.example.toml`](config/config.example.toml) - full project config in the `config/` folder
+- [`config/markitdown-llm.sample.toml`](config/markitdown-llm.sample.toml) - minimal MarkItDown LLM sample in the `config/` folder
+- [`.env.sample`](.env.sample) - sample environment variable file in the project root
 
 For the Scrapling public-URL pipeline:
 
@@ -87,7 +87,8 @@ For PaddleOCR-backed OCR:
 ```
 
 Then install PaddlePaddle separately for your platform. LMIT does not bundle it in the default install path.
-`pp_structure` and `vision` also rely on PaddleX through the same optional extra.
+The `paddleocr` extra also installs `paddlex[ocr]`, which is required by the `pp_structure`
+and `vision` profiles.
 
 For logged-in page capture:
 
@@ -277,7 +278,7 @@ When a `.txt` file contains URLs, LMIT writes a Markdown note containing the ori
 
 LMIT now exposes MarkItDown image-description settings through both TOML and the GUI.
 
-If you want a minimal starting point instead of the full project config, start from [C:\codex_projext\LMIT\config\markitdown-llm.sample.toml](C:/codex_projext/LMIT/config/markitdown-llm.sample.toml) and pair it with [C:\codex_projext\LMIT\.env.sample](C:/codex_projext/LMIT/.env.sample).
+If you want a minimal starting point instead of the full project config, start from [`config/markitdown-llm.sample.toml`](config/markitdown-llm.sample.toml) in the project `config/` folder and pair it with [`.env.sample`](.env.sample) in the project root.
 
 Example TOML:
 
@@ -321,6 +322,8 @@ Notes:
 - `ocr.paddle_profile = "pp_ocr"` uses the classic PaddleOCR flow for PDF page OCR and embedded Office images.
 - `ocr.paddle_profile = "pp_structure"` uses PP-StructureV3 through PaddleX for PDF parsing and embedded Office images.
 - `ocr.paddle_profile = "vision"` uses PaddleOCR-VL through PaddleX for PDF parsing and embedded Office images.
+- If `ocr.paddle_profile` is `pp_structure` or `vision`, make sure LMIT was installed with the
+  `paddleocr` extra so `paddlex[ocr]` is available.
 - `ocr.paddle_device = "auto"` prefers `gpu:0` when CUDA is available and otherwise falls back to CPU.
 - `ocr.paddle_enable_hpi = true` enables Paddle high-performance inference where supported.
 - `ocr.paddle_use_tensorrt` and `ocr.paddle_precision` are currently intended for the `pp_ocr` profile.
