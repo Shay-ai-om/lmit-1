@@ -8,7 +8,7 @@ from lmit.config import AppConfig
 
 def conversion_key(cfg: AppConfig) -> str:
     payload = {
-        "version": 11,
+        "version": 14,
         "fetch_urls": cfg.conversion.fetch_urls,
         "enable_markitdown_plugins": cfg.conversion.enable_markitdown_plugins,
         "blank_note_for_images": cfg.conversion.blank_note_for_images,
@@ -21,6 +21,36 @@ def conversion_key(cfg: AppConfig) -> str:
             "llm_model": cfg.markitdown.llm_model,
             "llm_api_key_env": cfg.markitdown.llm_api_key_env,
             "llm_prompt": cfg.markitdown.llm_prompt,
+        },
+        "ocr": {
+            "provider": cfg.ocr.provider,
+            "paddle_profile": cfg.ocr.paddle_profile,
+            "paddle_lang": cfg.ocr.paddle_lang,
+            "paddle_device": cfg.ocr.paddle_device,
+            "paddle_enable_hpi": cfg.ocr.paddle_enable_hpi,
+            "paddle_use_tensorrt": cfg.ocr.paddle_use_tensorrt,
+            "paddle_precision": cfg.ocr.paddle_precision,
+            "paddle_cpu_threads": cfg.ocr.paddle_cpu_threads,
+            "paddle_use_angle_cls": cfg.ocr.paddle_use_angle_cls,
+            "paddle_pdf_render_dpi": cfg.ocr.paddle_pdf_render_dpi,
+            "paddle_structure_use_doc_orientation_classify": (
+                cfg.ocr.paddle_structure_use_doc_orientation_classify
+            ),
+            "paddle_structure_use_chart_recognition": (
+                cfg.ocr.paddle_structure_use_chart_recognition
+            ),
+            "paddle_structure_merge_layout_blocks": (
+                cfg.ocr.paddle_structure_merge_layout_blocks
+            ),
+            "paddle_vision_use_doc_preprocessor": (
+                cfg.ocr.paddle_vision_use_doc_preprocessor
+            ),
+            "paddle_vision_format_block_content": (
+                cfg.ocr.paddle_vision_format_block_content
+            ),
+            "paddle_vision_merge_layout_blocks": (
+                cfg.ocr.paddle_vision_merge_layout_blocks
+            ),
         },
         "public_fetch": {
             # Bump this when the public-URL extraction pipeline changes in a

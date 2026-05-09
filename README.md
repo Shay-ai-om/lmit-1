@@ -34,6 +34,7 @@ For image-to-Markdown work, there are two separate pieces:
 
 - OCR depends on MarkItDown plugins being installed and enabled.
 - Image description depends on a configured multimodal LLM provider.
+- PaddleOCR can be enabled as an alternative OCR provider for PDFs and embedded document images, with selectable `pp_ocr`, `pp_structure`, and `vision` profiles.
 
 ## Install
 
@@ -78,6 +79,15 @@ For the Scrapling public-URL pipeline:
 ```
 
 If you skip the Scrapling extra, public URLs still work. The new pipeline will fall back to the legacy MarkItDown path when Scrapling is unavailable.
+
+For PaddleOCR-backed OCR:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[paddleocr,dev]"
+```
+
+Then install PaddlePaddle separately for your platform. LMIT does not bundle it in the default install path.
+`pp_structure` and `vision` also rely on PaddleX through the same optional extra.
 
 For logged-in page capture:
 
@@ -282,12 +292,39 @@ llm_base_url = ""
 llm_model = "gpt-4.1-mini"
 llm_api_key_env = "OPENAI_API_KEY"
 llm_prompt = "Write a detailed caption for this image."
+
+[ocr]
+provider = "llm"
+paddle_profile = "pp_ocr"
+paddle_device = "auto"
+paddle_enable_hpi = false
+paddle_use_tensorrt = false
+paddle_precision = "fp32"
+paddle_cpu_threads = 8
+paddle_lang = "ch"
+paddle_use_angle_cls = true
+paddle_pdf_render_dpi = 200
+paddle_structure_use_doc_orientation_classify = true
+paddle_structure_use_chart_recognition = true
+paddle_structure_merge_layout_blocks = true
+paddle_vision_use_doc_preprocessor = true
+paddle_vision_format_block_content = true
+paddle_vision_merge_layout_blocks = true
 ```
 
 Notes:
 
 - `enable_markitdown_plugins = true` is still the switch that allows OCR plugins to load.
 - `llm_enabled = true` enables image captioning for `.jpg`, `.jpeg`, and `.png`.
+- `ocr.provider = "llm"` keeps the current MarkItDown/plugin/LLM OCR path.
+- `ocr.provider = "paddleocr"` makes Paddle the OCR path for PDFs and embedded Office images.
+- `ocr.paddle_profile = "pp_ocr"` uses the classic PaddleOCR flow for PDF page OCR and embedded Office images.
+- `ocr.paddle_profile = "pp_structure"` uses PP-StructureV3 through PaddleX for PDF parsing and embedded Office images.
+- `ocr.paddle_profile = "vision"` uses PaddleOCR-VL through PaddleX for PDF parsing and embedded Office images.
+- `ocr.paddle_device = "auto"` prefers `gpu:0` when CUDA is available and otherwise falls back to CPU.
+- `ocr.paddle_enable_hpi = true` enables Paddle high-performance inference where supported.
+- `ocr.paddle_use_tensorrt` and `ocr.paddle_precision` are currently intended for the `pp_ocr` profile.
+- Standalone `.jpg`, `.jpeg`, and `.png` still stay on the existing MarkItDown + LLM image-description path even when PaddleOCR is enabled.
 - Supported providers are:
   - `openai_compatible`
   - `gemini`

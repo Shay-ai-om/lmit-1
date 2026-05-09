@@ -32,6 +32,24 @@ llm_api_key_env = "OPENAI_API_KEY"
 
 llm_prompt = "Write a detailed caption for this image."
 
+[ocr]
+provider = "llm"
+paddle_profile = "pp_ocr"
+paddle_device = "auto"
+paddle_enable_hpi = false
+paddle_use_tensorrt = false
+paddle_precision = "fp32"
+paddle_cpu_threads = 8
+paddle_lang = "ch"
+paddle_use_angle_cls = true
+paddle_pdf_render_dpi = 200
+paddle_structure_use_doc_orientation_classify = true
+paddle_structure_use_chart_recognition = true
+paddle_structure_merge_layout_blocks = true
+paddle_vision_use_doc_preprocessor = true
+paddle_vision_format_block_content = true
+paddle_vision_merge_layout_blocks = true
+
 # Provider examples:
 #
 # [markitdown]

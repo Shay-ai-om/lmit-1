@@ -101,6 +101,11 @@ class RawMarkdownGui:
         self.enable_markitdown_plugins_var = tk.BooleanVar(
             value=self.settings.enable_markitdown_plugins
         )
+        self.enable_paddleocr_var = tk.BooleanVar(value=self.settings.enable_paddleocr)
+        self.paddle_profile_var = tk.StringVar(value=self.settings.paddle_profile)
+        self.enable_paddle_gpu_var = tk.BooleanVar(value=self.settings.enable_paddle_gpu)
+        self.paddle_device_var = tk.StringVar(value=self.settings.paddle_device)
+        self.enable_paddle_hpi_var = tk.BooleanVar(value=self.settings.enable_paddle_hpi)
         self.image_llm_enabled_var = tk.BooleanVar(value=self.settings.image_llm_enabled)
         self.image_llm_provider_var = tk.StringVar(value=self.settings.image_llm_provider)
         self.image_llm_base_url_var = tk.StringVar(value=self.settings.image_llm_base_url)
@@ -224,9 +229,48 @@ class RawMarkdownGui:
             markitdown_frame,
             text="啟用圖片 LLM 描述",
             variable=self.image_llm_enabled_var,
+        ).grid(row=6, column=0, columnspan=2, sticky="w", padx=8, pady=4)
+        ttk.Checkbutton(
+            markitdown_frame,
+            text="啟用 PaddleOCR 作為 OCR provider",
+            variable=self.enable_paddleocr_var,
+            command=self._sync_paddleocr_controls,
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=4)
-        ttk.Label(markitdown_frame, text="LLM provider").grid(
+        ttk.Label(markitdown_frame, text="Paddle profile").grid(
             row=2, column=0, sticky="w", padx=8, pady=3
+        )
+        self.paddle_profile_combo = ttk.Combobox(
+            markitdown_frame,
+            textvariable=self.paddle_profile_var,
+            state="readonly",
+            values=("pp_ocr", "pp_structure", "vision"),
+            width=18,
+        )
+        self.paddle_profile_combo.grid(row=2, column=1, sticky="ew", padx=8, pady=3)
+        ttk.Checkbutton(
+            markitdown_frame,
+            text="啟用 GPU 加速（若可用）",
+            variable=self.enable_paddle_gpu_var,
+            command=self._sync_paddleocr_controls,
+        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=8, pady=4)
+        ttk.Label(markitdown_frame, text="Paddle device").grid(
+            row=4, column=0, sticky="w", padx=8, pady=3
+        )
+        self.paddle_device_combo = ttk.Combobox(
+            markitdown_frame,
+            textvariable=self.paddle_device_var,
+            state="readonly",
+            values=("auto", "gpu:0", "gpu:1"),
+            width=18,
+        )
+        self.paddle_device_combo.grid(row=4, column=1, sticky="ew", padx=8, pady=3)
+        ttk.Checkbutton(
+            markitdown_frame,
+            text="啟用 Paddle 高效推論 HPI",
+            variable=self.enable_paddle_hpi_var,
+        ).grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=4)
+        ttk.Label(markitdown_frame, text="LLM provider").grid(
+            row=7, column=0, sticky="w", padx=8, pady=3
         )
         ttk.Combobox(
             markitdown_frame,
@@ -234,11 +278,11 @@ class RawMarkdownGui:
             state="readonly",
             values=("openai_compatible", "gemini", "lm_studio", "ollama"),
             width=18,
-        ).grid(row=2, column=1, sticky="ew", padx=8, pady=3)
-        self._entry_row(markitdown_frame, 3, "LLM base URL", self.image_llm_base_url_var)
-        self._entry_row(markitdown_frame, 4, "LLM model", self.image_llm_model_var)
-        self._entry_row(markitdown_frame, 5, "API key env var", self.image_llm_api_key_env_var)
-        self._entry_row(markitdown_frame, 6, "Image prompt", self.image_llm_prompt_var)
+        ).grid(row=7, column=1, sticky="ew", padx=8, pady=3)
+        self._entry_row(markitdown_frame, 8, "LLM base URL", self.image_llm_base_url_var)
+        self._entry_row(markitdown_frame, 9, "LLM model", self.image_llm_model_var)
+        self._entry_row(markitdown_frame, 10, "API key env var", self.image_llm_api_key_env_var)
+        self._entry_row(markitdown_frame, 11, "Image prompt", self.image_llm_prompt_var)
 
         checks = [
             ("抓取文字檔中的 link content", self.fetch_urls_var),
@@ -292,6 +336,7 @@ class RawMarkdownGui:
         scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scrollbar.set)
+        self._sync_paddleocr_controls()
 
         self._append_log(f"設定檔：{self.settings_path}")
 
@@ -544,6 +589,11 @@ class RawMarkdownGui:
             stable_seconds=stable,
             fetch_urls=bool(self.fetch_urls_var.get()),
             enable_markitdown_plugins=bool(self.enable_markitdown_plugins_var.get()),
+            enable_paddleocr=bool(self.enable_paddleocr_var.get()),
+            paddle_profile=self.paddle_profile_var.get().strip() or "pp_ocr",
+            enable_paddle_gpu=bool(self.enable_paddle_gpu_var.get()),
+            paddle_device=self.paddle_device_var.get().strip() or "auto",
+            enable_paddle_hpi=bool(self.enable_paddle_hpi_var.get()),
             image_llm_enabled=bool(self.image_llm_enabled_var.get()),
             image_llm_provider=self.image_llm_provider_var.get().strip() or "openai_compatible",
             image_llm_base_url=self.image_llm_base_url_var.get().strip(),
@@ -559,6 +609,19 @@ class RawMarkdownGui:
             last_markdown_output_at=self.settings.last_markdown_output_at,
             last_report_path=self.settings.last_report_path,
         )
+
+    def _sync_paddleocr_controls(self) -> None:
+        if not hasattr(self, "paddle_profile_combo"):
+            return
+        state = "readonly" if self.enable_paddleocr_var.get() else "disabled"
+        self.paddle_profile_combo.configure(state=state)
+        gpu_state = (
+            "readonly"
+            if self.enable_paddleocr_var.get() and self.enable_paddle_gpu_var.get()
+            else "disabled"
+        )
+        if hasattr(self, "paddle_device_combo"):
+            self.paddle_device_combo.configure(state=gpu_state)
 
     def _apply_autostart(self) -> None:
         enabled = bool(self.autostart_var.get())

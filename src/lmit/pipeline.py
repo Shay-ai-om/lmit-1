@@ -91,6 +91,8 @@ def run_convert(
     adapter = MarkItDownAdapter(
         enable_plugins=cfg.conversion.enable_markitdown_plugins,
         llm_config=cfg.markitdown,
+        ocr_config=cfg.ocr,
+        log=report.log,
     )
     public_fetcher = PublicUrlFetcher(
         adapter,
