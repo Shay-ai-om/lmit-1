@@ -210,6 +210,39 @@ def test_run_convert_passes_public_fetch_config_to_public_url_fetcher(
     assert captured["public_fetch"] == cfg.public_fetch
 
 
+def test_run_convert_logs_missing_markitdown_ocr_plugin(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    class FakeAdapter:
+        def __init__(self, **kwargs):
+            pass
+
+        def plugin_diagnostics(self):
+            return {
+                "plugins_requested": True,
+                "plugin_names": (),
+                "ocr_plugin_available": False,
+                "llm_runtime_enabled": True,
+                "ocr_ready": False,
+            }
+
+    monkeypatch.setattr(pipeline, "MarkItDownAdapter", FakeAdapter)
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    cfg = _cfg(tmp_path)
+    cfg = replace(cfg, markitdown=replace(cfg.markitdown, llm_enabled=True))
+
+    code = run_convert(cfg)
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "[MARKITDOWN-PLUGINS]" in out
+    assert "[MARKITDOWN-OCR-MISSING]" in out
+
+
 def test_run_convert_returns_cancel_code_after_first_item(tmp_path: Path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()

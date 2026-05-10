@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 import requests
@@ -43,6 +44,8 @@ class MarkItDownAdapter:
             raise RuntimeError(
                 "MarkItDown is not installed. Install the project dependencies first."
             ) from exc
+        self._plugins_requested = bool(enable_plugins)
+        self._plugin_names = _installed_markitdown_plugin_names()
         session = build_requests_session(request_timeout_seconds)
         kwargs: dict[str, Any] = {
             "enable_plugins": enable_plugins,
@@ -58,6 +61,7 @@ class MarkItDownAdapter:
             kwargs["llm_model"] = llm_runtime.model
             if llm_runtime.prompt is not None:
                 kwargs["llm_prompt"] = llm_runtime.prompt
+        self._llm_runtime_enabled = llm_runtime is not None
         self._md = MarkItDown(
             **kwargs,
         )
@@ -68,8 +72,28 @@ class MarkItDownAdapter:
     def convert_url(self, url: str) -> str:
         return _result_text(self._md.convert(url))
 
+    def plugin_diagnostics(self) -> dict[str, Any]:
+        return {
+            "plugins_requested": self._plugins_requested,
+            "plugin_names": self._plugin_names,
+            "ocr_plugin_available": "ocr" in self._plugin_names,
+            "llm_runtime_enabled": self._llm_runtime_enabled,
+            "ocr_ready": (
+                self._plugins_requested
+                and self._llm_runtime_enabled
+                and "ocr" in self._plugin_names
+            ),
+        }
+
 
 def _result_text(result: Any) -> str:
     if hasattr(result, "text_content"):
         return str(result.text_content)
     return str(result)
+
+
+def _installed_markitdown_plugin_names() -> tuple[str, ...]:
+    try:
+        return tuple(sorted(ep.name for ep in entry_points(group="markitdown.plugin")))
+    except Exception:
+        return ()

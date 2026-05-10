@@ -70,6 +70,8 @@ retry_failed = false
 # MarkItDown can describe images with a configured multimodal LLM provider.
 # OCR still depends on installed MarkItDown plugins, so keep
 # enable_markitdown_plugins = true if you expect OCR-style extraction.
+# For scanned PDFs / embedded Office images, install the optional
+# `markitdown-ocr` plugin via `.[ocr]` or `.[full]`.
 llm_enabled = false
 llm_provider = "openai_compatible"
 llm_base_url = ""

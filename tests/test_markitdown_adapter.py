@@ -96,6 +96,74 @@ def test_markitdown_adapter_passes_llm_configuration(monkeypatch):
     assert hasattr(captured["llm_client"], "chat")
 
 
+def test_markitdown_adapter_reports_ocr_plugin_ready(monkeypatch):
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+    monkeypatch.setattr(
+        "lmit.converters.markitdown_adapter.entry_points",
+        lambda group: [types.SimpleNamespace(name="ocr")],
+    )
+    monkeypatch.setenv("TEST_OPENAI_KEY", "secret-key")
+
+    adapter = MarkItDownAdapter(
+        enable_plugins=True,
+        llm_config=MarkItDownConfig(
+            llm_enabled=True,
+            llm_model="gpt-4.1-mini",
+            llm_api_key_env="TEST_OPENAI_KEY",
+        ),
+    )
+
+    assert adapter.plugin_diagnostics() == {
+        "plugins_requested": True,
+        "plugin_names": ("ocr",),
+        "ocr_plugin_available": True,
+        "llm_runtime_enabled": True,
+        "ocr_ready": True,
+    }
+
+
+def test_markitdown_adapter_reports_missing_ocr_plugin(monkeypatch):
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+    monkeypatch.setattr(
+        "lmit.converters.markitdown_adapter.entry_points",
+        lambda group: [],
+    )
+    monkeypatch.setenv("TEST_OPENAI_KEY", "secret-key")
+
+    adapter = MarkItDownAdapter(
+        enable_plugins=True,
+        llm_config=MarkItDownConfig(
+            llm_enabled=True,
+            llm_model="gpt-4.1-mini",
+            llm_api_key_env="TEST_OPENAI_KEY",
+        ),
+    )
+
+    assert adapter.plugin_diagnostics() == {
+        "plugins_requested": True,
+        "plugin_names": (),
+        "ocr_plugin_available": False,
+        "llm_runtime_enabled": True,
+        "ocr_ready": False,
+    }
+
+
 def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):
     monkeypatch.delenv("MISSING_KEY", raising=False)
 

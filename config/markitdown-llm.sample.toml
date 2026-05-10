@@ -1,5 +1,7 @@
 [conversion]
 # Keep this enabled if you want MarkItDown OCR plugins to load.
+# For scanned PDFs / embedded Office images, also install the optional
+# `markitdown-ocr` plugin via `.[ocr]` or `.[full]`.
 enable_markitdown_plugins = true
 
 [markitdown]

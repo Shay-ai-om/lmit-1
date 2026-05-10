@@ -16,8 +16,12 @@ dependencies = [
 documents = [
   "markitdown[docx,pdf]>=0.1.5",
 ]
+ocr = [
+  "markitdown-ocr>=0.1.0",
+]
 full = [
   "markitdown[all]>=0.1.5",
+  "markitdown-ocr>=0.1.0",
 ]
 scrapling = [
   "scrapling[fetchers]>=0.4.7",

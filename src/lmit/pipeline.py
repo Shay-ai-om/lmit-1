@@ -92,6 +92,26 @@ def run_convert(
         enable_plugins=cfg.conversion.enable_markitdown_plugins,
         llm_config=cfg.markitdown,
     )
+    plugin_diag = adapter.plugin_diagnostics()
+    report.log(
+        "[MARKITDOWN-PLUGINS] "
+        f"requested={plugin_diag['plugins_requested']} "
+        f"installed={list(plugin_diag['plugin_names'])} "
+        f"ocr_plugin={plugin_diag['ocr_plugin_available']} "
+        f"llm_enabled={plugin_diag['llm_runtime_enabled']} "
+        f"ocr_ready={plugin_diag['ocr_ready']}"
+    )
+    if (
+        cfg.conversion.enable_markitdown_plugins
+        and cfg.markitdown.llm_enabled
+        and not plugin_diag["ocr_plugin_available"]
+    ):
+        report.log(
+            "[MARKITDOWN-OCR-MISSING] "
+            "LLM image provider is enabled, but the optional `markitdown-ocr` "
+            "plugin is not installed/discovered. Scanned PDFs and embedded "
+            "document images will not use OCR."
+        )
     public_fetcher = PublicUrlFetcher(
         adapter,
         work_dir=cfg.paths.work_dir,

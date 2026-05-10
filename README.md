@@ -34,6 +34,7 @@ For image-to-Markdown work, there are two separate pieces:
 
 - OCR depends on MarkItDown plugins being installed and enabled.
 - Image description depends on a configured multimodal LLM provider.
+- For scanned PDFs and embedded document images, install the optional `markitdown-ocr` plugin. LMIT can pass the same configured `llm_client` / `llm_model` path through to that plugin.
 
 ## Install
 
@@ -54,6 +55,14 @@ For the full MarkItDown optional set:
 
 ```powershell
 .\.venv\Scripts\python -m pip install -e ".[full,dev]"
+```
+
+The `full` extra now also installs the optional `markitdown-ocr` plugin.
+
+If you want the OCR plugin without the rest of the full MarkItDown extras:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[ocr,dev]"
 ```
 
 If you want image descriptions through MarkItDown, set an API key environment variable before running LMIT when your provider needs one. Example for OpenAI:
@@ -288,6 +297,8 @@ Notes:
 
 - `enable_markitdown_plugins = true` is still the switch that allows OCR plugins to load.
 - `llm_enabled = true` enables image captioning for `.jpg`, `.jpeg`, and `.png`.
+- `markitdown[all]` by itself does not install third-party plugins. In LMIT, install `.[ocr,dev]` or `.[full,dev]` if you want the optional `markitdown-ocr` plugin for scanned PDFs and embedded Office images.
+- When plugins and the LLM provider are enabled, LMIT logs `[MARKITDOWN-PLUGINS] ...` at startup. If OCR is still unavailable, it also logs `[MARKITDOWN-OCR-MISSING] ...`.
 - Supported providers are:
   - `openai_compatible`
   - `gemini`
