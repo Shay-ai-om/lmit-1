@@ -6,7 +6,10 @@ from typing import Any
 import requests
 
 from lmit.config import MarkItDownConfig
-from lmit.converters.markitdown_llm import build_markitdown_llm_runtime
+from lmit.converters.markitdown_llm import (
+    build_markitdown_llm_runtime,
+    build_markitdown_plugin_llm_runtime,
+)
 
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
@@ -48,23 +51,34 @@ class MarkItDownAdapter:
         self._plugin_names = _installed_markitdown_plugin_names()
         session = build_requests_session(request_timeout_seconds)
         kwargs: dict[str, Any] = {
-            "enable_plugins": enable_plugins,
+            "enable_plugins": False,
             "requests_session": session,
         }
-        llm_runtime = build_markitdown_llm_runtime(
+        image_llm_runtime = build_markitdown_llm_runtime(
             llm_config or MarkItDownConfig(),
             session=session,
             timeout_seconds=request_timeout_seconds,
         )
-        if llm_runtime is not None:
-            kwargs["llm_client"] = llm_runtime.client
-            kwargs["llm_model"] = llm_runtime.model
-            if llm_runtime.prompt is not None:
-                kwargs["llm_prompt"] = llm_runtime.prompt
-        self._llm_runtime_enabled = llm_runtime is not None
+        if image_llm_runtime is not None:
+            kwargs["llm_client"] = image_llm_runtime.client
+            kwargs["llm_model"] = image_llm_runtime.model
+            if image_llm_runtime.prompt is not None:
+                kwargs["llm_prompt"] = image_llm_runtime.prompt
+        plugin_llm_runtime = build_markitdown_plugin_llm_runtime(
+            llm_config or MarkItDownConfig(),
+            session=session,
+            timeout_seconds=request_timeout_seconds,
+        )
+        self._image_llm_runtime_enabled = image_llm_runtime is not None
+        self._plugin_llm_runtime_enabled = plugin_llm_runtime is not None
         self._md = MarkItDown(
             **kwargs,
         )
+        if self._plugins_requested:
+            _register_markitdown_plugins(
+                self._md,
+                llm_runtime=plugin_llm_runtime,
+            )
 
     def convert_path(self, path: Path) -> str:
         return _result_text(self._md.convert(str(path)))
@@ -77,10 +91,11 @@ class MarkItDownAdapter:
             "plugins_requested": self._plugins_requested,
             "plugin_names": self._plugin_names,
             "ocr_plugin_available": "ocr" in self._plugin_names,
-            "llm_runtime_enabled": self._llm_runtime_enabled,
+            "image_llm_runtime_enabled": self._image_llm_runtime_enabled,
+            "plugin_llm_runtime_enabled": self._plugin_llm_runtime_enabled,
             "ocr_ready": (
                 self._plugins_requested
-                and self._llm_runtime_enabled
+                and self._plugin_llm_runtime_enabled
                 and "ocr" in self._plugin_names
             ),
         }
@@ -97,3 +112,24 @@ def _installed_markitdown_plugin_names() -> tuple[str, ...]:
         return tuple(sorted(ep.name for ep in entry_points(group="markitdown.plugin")))
     except Exception:
         return ()
+
+
+def _register_markitdown_plugins(md: Any, *, llm_runtime: Any | None) -> None:
+    for plugin in _load_markitdown_plugins():
+        kwargs: dict[str, Any] = {}
+        if llm_runtime is not None:
+            kwargs["llm_client"] = llm_runtime.client
+            kwargs["llm_model"] = llm_runtime.model
+            if llm_runtime.prompt is not None:
+                kwargs["llm_prompt"] = llm_runtime.prompt
+        plugin.register_converters(md, **kwargs)
+
+
+def _load_markitdown_plugins() -> tuple[Any, ...]:
+    plugins: list[Any] = []
+    for ep in entry_points(group="markitdown.plugin"):
+        try:
+            plugins.append(ep.load())
+        except Exception:
+            continue
+    return tuple(plugins)

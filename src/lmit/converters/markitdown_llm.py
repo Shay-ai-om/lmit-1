@@ -180,24 +180,67 @@ def build_markitdown_llm_runtime(
     session: requests.Session,
     timeout_seconds: float,
 ) -> MarkItDownLlmRuntime | None:
-    if not cfg.llm_enabled:
+    return _build_markitdown_llm_runtime(
+        cfg,
+        session=session,
+        timeout_seconds=timeout_seconds,
+        require_enabled=True,
+        include_prompt=True,
+        fail_if_incomplete=True,
+    )
+
+
+def build_markitdown_plugin_llm_runtime(
+    cfg: MarkItDownConfig,
+    *,
+    session: requests.Session,
+    timeout_seconds: float,
+) -> MarkItDownLlmRuntime | None:
+    return _build_markitdown_llm_runtime(
+        cfg,
+        session=session,
+        timeout_seconds=timeout_seconds,
+        require_enabled=False,
+        include_prompt=False,
+        fail_if_incomplete=False,
+    )
+
+
+def _build_markitdown_llm_runtime(
+    cfg: MarkItDownConfig,
+    *,
+    session: requests.Session,
+    timeout_seconds: float,
+    require_enabled: bool,
+    include_prompt: bool,
+    fail_if_incomplete: bool,
+) -> MarkItDownLlmRuntime | None:
+    if require_enabled and not cfg.llm_enabled:
         return None
 
     provider = _normalize_provider(cfg.llm_provider)
-    model = _require_model(cfg)
-    prompt = (cfg.llm_prompt or "").strip() or None
+    model = _require_model(cfg) if fail_if_incomplete else _optional_model(cfg)
+    if not model:
+        return None
+    prompt = ((cfg.llm_prompt or "").strip() or None) if include_prompt else None
 
     if provider == "openai_compatible":
+        api_key = _require_api_key(cfg) if fail_if_incomplete else _optional_api_key(cfg)
+        if not api_key:
+            return None
         client = OpenAICompatibleClient(
             base_url=_base_url_for_provider(cfg, provider),
-            api_key=_require_api_key(cfg),
+            api_key=api_key,
             session=session,
             timeout_seconds=timeout_seconds,
         )
     elif provider == "gemini":
+        api_key = _require_api_key(cfg) if fail_if_incomplete else _optional_api_key(cfg)
+        if not api_key:
+            return None
         client = GeminiClient(
             base_url=_base_url_for_provider(cfg, provider),
-            api_key=_require_api_key(cfg),
+            api_key=api_key,
             session=session,
             timeout_seconds=timeout_seconds,
         )
@@ -241,6 +284,11 @@ def _require_model(cfg: MarkItDownConfig) -> str:
             "Set [markitdown].llm_model in your TOML or GUI settings."
         )
     return model
+
+
+def _optional_model(cfg: MarkItDownConfig) -> str | None:
+    model = (cfg.llm_model or "").strip()
+    return model or None
 
 
 def _require_api_key(cfg: MarkItDownConfig) -> str:

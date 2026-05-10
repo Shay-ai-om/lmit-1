@@ -224,7 +224,8 @@ def test_run_convert_logs_missing_markitdown_ocr_plugin(
                 "plugins_requested": True,
                 "plugin_names": (),
                 "ocr_plugin_available": False,
-                "llm_runtime_enabled": True,
+                "image_llm_runtime_enabled": False,
+                "plugin_llm_runtime_enabled": True,
                 "ocr_ready": False,
             }
 
@@ -233,8 +234,6 @@ def test_run_convert_logs_missing_markitdown_ocr_plugin(
     input_dir = tmp_path / "input"
     input_dir.mkdir()
     cfg = _cfg(tmp_path)
-    cfg = replace(cfg, markitdown=replace(cfg.markitdown, llm_enabled=True))
-
     code = run_convert(cfg)
     out = capsys.readouterr().out
 

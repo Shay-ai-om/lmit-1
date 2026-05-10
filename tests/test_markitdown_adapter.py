@@ -19,6 +19,7 @@ from lmit.converters.markitdown_llm import (
     DEFAULT_LM_STUDIO_BASE_URL,
     DEFAULT_OLLAMA_BASE_URL,
     build_markitdown_llm_runtime,
+    build_markitdown_plugin_llm_runtime,
 )
 from lmit.fetchers.public_url import PublicUrlFetcher
 from lmit.reports import ConversionReport, latest_report_path
@@ -90,16 +91,31 @@ def test_markitdown_adapter_passes_llm_configuration(monkeypatch):
         ),
     )
 
-    assert captured["enable_plugins"] is True
+    assert captured["enable_plugins"] is False
     assert captured["llm_model"] == "gpt-4.1-mini"
     assert captured["llm_prompt"] == "Describe this image for Markdown."
     assert hasattr(captured["llm_client"], "chat")
 
 
-def test_markitdown_adapter_reports_ocr_plugin_ready(monkeypatch):
+def test_markitdown_adapter_auto_passes_llm_to_ocr_plugin_without_image_llm_checkbox(
+    monkeypatch,
+):
+    plugin_calls: list[dict[str, object]] = []
+
     class FakeMarkItDown:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+
+    class FakePlugin:
+        def register_converters(self, md, **kwargs):
+            plugin_calls.append(kwargs)
+
+    class FakeEntryPoint:
+        name = "ocr"
+
+        @staticmethod
+        def load():
+            return FakePlugin()
 
     monkeypatch.setitem(
         sys.modules,
@@ -108,24 +124,30 @@ def test_markitdown_adapter_reports_ocr_plugin_ready(monkeypatch):
     )
     monkeypatch.setattr(
         "lmit.converters.markitdown_adapter.entry_points",
-        lambda group: [types.SimpleNamespace(name="ocr")],
+        lambda group: [FakeEntryPoint()],
     )
     monkeypatch.setenv("TEST_OPENAI_KEY", "secret-key")
 
     adapter = MarkItDownAdapter(
         enable_plugins=True,
         llm_config=MarkItDownConfig(
-            llm_enabled=True,
+            llm_enabled=False,
             llm_model="gpt-4.1-mini",
             llm_api_key_env="TEST_OPENAI_KEY",
+            llm_prompt="Describe this image for Markdown.",
         ),
     )
 
+    assert len(plugin_calls) == 1
+    assert plugin_calls[0]["llm_model"] == "gpt-4.1-mini"
+    assert hasattr(plugin_calls[0]["llm_client"], "chat")
+    assert "llm_prompt" not in plugin_calls[0]
     assert adapter.plugin_diagnostics() == {
         "plugins_requested": True,
         "plugin_names": ("ocr",),
         "ocr_plugin_available": True,
-        "llm_runtime_enabled": True,
+        "image_llm_runtime_enabled": False,
+        "plugin_llm_runtime_enabled": True,
         "ocr_ready": True,
     }
 
@@ -149,7 +171,7 @@ def test_markitdown_adapter_reports_missing_ocr_plugin(monkeypatch):
     adapter = MarkItDownAdapter(
         enable_plugins=True,
         llm_config=MarkItDownConfig(
-            llm_enabled=True,
+            llm_enabled=False,
             llm_model="gpt-4.1-mini",
             llm_api_key_env="TEST_OPENAI_KEY",
         ),
@@ -159,9 +181,31 @@ def test_markitdown_adapter_reports_missing_ocr_plugin(monkeypatch):
         "plugins_requested": True,
         "plugin_names": (),
         "ocr_plugin_available": False,
-        "llm_runtime_enabled": True,
+        "image_llm_runtime_enabled": False,
+        "plugin_llm_runtime_enabled": True,
         "ocr_ready": False,
     }
+
+
+def test_build_markitdown_plugin_llm_runtime_does_not_require_image_llm_enabled(
+    monkeypatch,
+):
+    monkeypatch.setenv("TEST_OPENAI_KEY", "secret-key")
+
+    runtime = build_markitdown_plugin_llm_runtime(
+        MarkItDownConfig(
+            llm_enabled=False,
+            llm_model="gpt-4.1-mini",
+            llm_api_key_env="TEST_OPENAI_KEY",
+            llm_prompt="Describe this image for Markdown.",
+        ),
+        session=requests.Session(),
+        timeout_seconds=30,
+    )
+
+    assert runtime is not None
+    assert runtime.model == "gpt-4.1-mini"
+    assert runtime.prompt is None
 
 
 def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):

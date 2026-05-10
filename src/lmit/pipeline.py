@@ -98,19 +98,30 @@ def run_convert(
         f"requested={plugin_diag['plugins_requested']} "
         f"installed={list(plugin_diag['plugin_names'])} "
         f"ocr_plugin={plugin_diag['ocr_plugin_available']} "
-        f"llm_enabled={plugin_diag['llm_runtime_enabled']} "
+        f"image_llm_enabled={plugin_diag['image_llm_runtime_enabled']} "
+        f"ocr_llm_enabled={plugin_diag['plugin_llm_runtime_enabled']} "
         f"ocr_ready={plugin_diag['ocr_ready']}"
     )
     if (
         cfg.conversion.enable_markitdown_plugins
-        and cfg.markitdown.llm_enabled
         and not plugin_diag["ocr_plugin_available"]
     ):
         report.log(
             "[MARKITDOWN-OCR-MISSING] "
-            "LLM image provider is enabled, but the optional `markitdown-ocr` "
-            "plugin is not installed/discovered. Scanned PDFs and embedded "
-            "document images will not use OCR."
+            "The optional `markitdown-ocr` plugin is not installed/discovered. "
+            "Scanned PDFs and embedded document images will not use OCR."
+        )
+    if (
+        cfg.conversion.enable_markitdown_plugins
+        and plugin_diag["ocr_plugin_available"]
+        and not plugin_diag["plugin_llm_runtime_enabled"]
+    ):
+        report.log(
+            "[MARKITDOWN-OCR-LLM-INACTIVE] "
+            "OCR plugin is installed, but no usable LLM provider/model is "
+            "configured for OCR. Set provider/model/API key below the "
+            "MarkItDown section; the image-description checkbox is not required "
+            "for OCR plugin usage."
         )
     public_fetcher = PublicUrlFetcher(
         adapter,

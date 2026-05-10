@@ -6,6 +6,8 @@ enable_markitdown_plugins = true
 
 [markitdown]
 llm_enabled = true
+# This switch is only for built-in image descriptions. OCR plugins can still
+# reuse the provider/model/API-key settings below even when this is false.
 
 # Supported providers:
 # - openai_compatible
@@ -33,6 +35,7 @@ llm_model = "gpt-4.1-mini"
 llm_api_key_env = "OPENAI_API_KEY"
 
 llm_prompt = "Write a detailed caption for this image."
+# This prompt is used for image descriptions only, not for OCR plugin calls.
 
 # Provider examples:
 #

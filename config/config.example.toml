@@ -72,12 +72,16 @@ retry_failed = false
 # enable_markitdown_plugins = true if you expect OCR-style extraction.
 # For scanned PDFs / embedded Office images, install the optional
 # `markitdown-ocr` plugin via `.[ocr]` or `.[full]`.
+# The OCR plugin automatically reuses provider/model/API-key settings below;
+# `llm_enabled` only controls image-description behavior.
 llm_enabled = false
 llm_provider = "openai_compatible"
 llm_base_url = ""
 llm_model = ""
 llm_api_key_env = "OPENAI_API_KEY"
 llm_prompt = "Write a detailed caption for this image."
+# This prompt is for image description only. It is not forwarded to
+# `markitdown-ocr`; OCR keeps the plugin's own extraction prompt.
 # Supported providers:
 # - openai_compatible -> default base URL: https://api.openai.com/v1
 # - gemini            -> default base URL: https://generativelanguage.googleapis.com/v1beta

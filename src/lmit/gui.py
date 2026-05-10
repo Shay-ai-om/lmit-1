@@ -215,12 +215,12 @@ class RawMarkdownGui:
         markitdown_frame.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             markitdown_frame,
-            text="啟用 MarkItDown plugins（OCR plugin 需要這個）",
+            text="啟用 MarkItDown plugins（OCR plugin 需要這個，會自動使用下方 provider/model）",
             variable=self.enable_markitdown_plugins_var,
         ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
         ttk.Checkbutton(
             markitdown_frame,
-            text="啟用圖片 LLM 描述",
+            text="啟用圖片 LLM 描述（只影響圖片描述，不影響 OCR plugin）",
             variable=self.image_llm_enabled_var,
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=4)
         ttk.Label(markitdown_frame, text="LLM provider").grid(
@@ -236,7 +236,7 @@ class RawMarkdownGui:
         self._entry_row(markitdown_frame, 3, "LLM base URL", self.image_llm_base_url_var)
         self._entry_row(markitdown_frame, 4, "LLM model", self.image_llm_model_var)
         self._entry_row(markitdown_frame, 5, "API key env var", self.image_llm_api_key_env_var)
-        self._entry_row(markitdown_frame, 6, "Image prompt", self.image_llm_prompt_var)
+        self._entry_row(markitdown_frame, 6, "Image description prompt", self.image_llm_prompt_var)
 
         checks = [
             ("抓取文字檔中的 link content", self.fetch_urls_var),
