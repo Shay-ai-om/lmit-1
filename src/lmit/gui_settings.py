@@ -23,11 +23,6 @@ class GuiSettings:
     stable_seconds: int
     fetch_urls: bool
     enable_markitdown_plugins: bool
-    enable_paddleocr: bool
-    paddle_profile: str
-    enable_paddle_gpu: bool
-    paddle_device: str
-    enable_paddle_hpi: bool
     image_llm_enabled: bool
     image_llm_provider: str
     image_llm_base_url: str
@@ -69,13 +64,6 @@ def default_gui_settings(cwd: Path | None = None) -> GuiSettings:
         stable_seconds=cfg.polling.stable_seconds,
         fetch_urls=cfg.conversion.fetch_urls,
         enable_markitdown_plugins=cfg.conversion.enable_markitdown_plugins,
-        enable_paddleocr=cfg.ocr.provider == "paddleocr",
-        paddle_profile=cfg.ocr.paddle_profile,
-        enable_paddle_gpu=(
-            cfg.ocr.provider == "paddleocr" and cfg.ocr.paddle_device != "cpu"
-        ),
-        paddle_device=cfg.ocr.paddle_device if cfg.ocr.paddle_device != "cpu" else "auto",
-        enable_paddle_hpi=cfg.ocr.paddle_enable_hpi,
         image_llm_enabled=cfg.markitdown.llm_enabled,
         image_llm_provider=cfg.markitdown.llm_provider,
         image_llm_base_url=cfg.markitdown.llm_base_url,
@@ -147,20 +135,6 @@ def build_app_config_from_gui(settings: GuiSettings, cwd: Path | None = None) ->
         skip_unchanged=bool(settings.skip_unchanged),
         overwrite=bool(settings.overwrite),
     )
-    ocr = replace(
-        cfg.ocr,
-        provider="paddleocr" if bool(settings.enable_paddleocr) else "llm",
-        paddle_profile=_normalize_paddle_profile(
-            settings.paddle_profile,
-            cfg.ocr.paddle_profile,
-        ),
-        paddle_device=(
-            _normalize_paddle_device(settings.paddle_device, cfg.ocr.paddle_device)
-            if bool(settings.enable_paddle_gpu)
-            else "cpu"
-        ),
-        paddle_enable_hpi=bool(settings.enable_paddle_hpi),
-    )
     markitdown = replace(
         cfg.markitdown,
         llm_enabled=bool(settings.image_llm_enabled),
@@ -185,7 +159,6 @@ def build_app_config_from_gui(settings: GuiSettings, cwd: Path | None = None) ->
         conversion=conversion,
         public_fetch=public_fetch,
         markitdown=markitdown,
-        ocr=ocr,
         output_naming=output_naming,
     )
 
@@ -211,17 +184,6 @@ def _coerce_settings(payload: dict[str, Any], defaults: GuiSettings) -> GuiSetti
         enable_markitdown_plugins=bool(
             payload.get("enable_markitdown_plugins", defaults.enable_markitdown_plugins)
         ),
-        enable_paddleocr=bool(payload.get("enable_paddleocr", defaults.enable_paddleocr)),
-        paddle_profile=_normalize_paddle_profile(
-            payload.get("paddle_profile"),
-            defaults.paddle_profile,
-        ),
-        enable_paddle_gpu=bool(payload.get("enable_paddle_gpu", defaults.enable_paddle_gpu)),
-        paddle_device=_normalize_paddle_device(
-            payload.get("paddle_device"),
-            defaults.paddle_device,
-        ),
-        enable_paddle_hpi=bool(payload.get("enable_paddle_hpi", defaults.enable_paddle_hpi)),
         image_llm_enabled=bool(payload.get("image_llm_enabled", defaults.image_llm_enabled)),
         image_llm_provider=_normalize_llm_provider(
             payload.get("image_llm_provider"),
@@ -292,20 +254,6 @@ def _normalize_llm_provider(value: Any, fallback: str) -> str:
     if text in {"openai_compatible", "gemini", "lm_studio", "ollama"}:
         return text
     return str(fallback).strip().lower() or "openai_compatible"
-
-
-def _normalize_paddle_profile(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if text in {"pp_ocr", "pp_structure", "vision"}:
-        return text
-    return str(fallback).strip().lower() or "pp_ocr"
-
-
-def _normalize_paddle_device(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if text in {"auto", "cpu", "gpu:0", "gpu:1"}:
-        return text
-    return str(fallback).strip().lower() or "auto"
 
 
 def _resolve_user_path(value: str, base: Path) -> Path:

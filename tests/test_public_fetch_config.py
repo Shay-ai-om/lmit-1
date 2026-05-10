@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lmit.config import (
-    MarkItDownConfig,
-    OcrConfig,
-    PublicFetchConfig,
-    default_config,
-    load_config,
-)
+from lmit.config import MarkItDownConfig, PublicFetchConfig, default_config, load_config
 
 
 def test_default_config_includes_public_fetch_defaults(tmp_path: Path):
@@ -99,53 +93,4 @@ def test_load_config_overrides_markitdown_llm_block(tmp_path: Path):
         llm_model="gemini-2.5-flash",
         llm_api_key_env="GEMINI_API_KEY",
         llm_prompt="Describe the image and any visible text.",
-    )
-
-
-def test_load_config_overrides_ocr_block(tmp_path: Path):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        "\n".join(
-            [
-                "[ocr]",
-                'provider = "paddleocr"',
-                'paddle_profile = "vision"',
-                'paddle_lang = "en"',
-                "paddle_use_angle_cls = false",
-                "paddle_pdf_render_dpi = 240",
-                "paddle_structure_use_doc_orientation_classify = false",
-                "paddle_structure_use_chart_recognition = false",
-                "paddle_structure_merge_layout_blocks = false",
-                "paddle_vision_use_doc_preprocessor = false",
-                "paddle_vision_format_block_content = false",
-                "paddle_vision_merge_layout_blocks = false",
-                'paddle_device = "gpu:1"',
-                "paddle_enable_hpi = true",
-                "paddle_use_tensorrt = true",
-                'paddle_precision = "fp16"',
-                "paddle_cpu_threads = 12",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    cfg = load_config(config_path, cwd=tmp_path)
-
-    assert cfg.ocr == OcrConfig(
-        provider="paddleocr",
-        paddle_profile="vision",
-        paddle_lang="en",
-        paddle_use_angle_cls=False,
-        paddle_pdf_render_dpi=240,
-        paddle_structure_use_doc_orientation_classify=False,
-        paddle_structure_use_chart_recognition=False,
-        paddle_structure_merge_layout_blocks=False,
-        paddle_vision_use_doc_preprocessor=False,
-        paddle_vision_format_block_content=False,
-        paddle_vision_merge_layout_blocks=False,
-        paddle_device="gpu:1",
-        paddle_enable_hpi=True,
-        paddle_use_tensorrt=True,
-        paddle_precision="fp16",
-        paddle_cpu_threads=12,
     )

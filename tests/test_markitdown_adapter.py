@@ -8,7 +8,7 @@ import types
 import pytest
 import requests
 
-from lmit.config import MarkItDownConfig, OcrConfig
+from lmit.config import MarkItDownConfig
 from lmit.converters.markitdown_adapter import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     MarkItDownAdapter,
@@ -96,31 +96,6 @@ def test_markitdown_adapter_passes_llm_configuration(monkeypatch):
     assert hasattr(captured["llm_client"], "chat")
 
 
-def test_markitdown_adapter_disables_plugins_when_paddleocr_is_enabled(monkeypatch):
-    captured: dict[str, object] = {}
-
-    class FakeMarkItDown:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown",
-        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
-    )
-    monkeypatch.setattr(
-        "lmit.converters.markitdown_adapter._build_paddleocr_provider",
-        lambda cfg: object(),
-    )
-
-    MarkItDownAdapter(
-        enable_plugins=True,
-        ocr_config=OcrConfig(provider="paddleocr"),
-    )
-
-    assert captured["enable_plugins"] is False
-
-
 def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):
     monkeypatch.delenv("MISSING_KEY", raising=False)
 
@@ -134,172 +109,6 @@ def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):
             session=requests.Session(),
             timeout_seconds=30,
         )
-
-
-def test_markitdown_adapter_routes_pdf_to_paddleocr_with_markitdown_fallback(monkeypatch, tmp_path: Path):
-    captured: dict[str, object] = {"paths": []}
-
-    class FakeMarkItDown:
-        def __init__(self, **kwargs):
-            captured["enable_plugins"] = kwargs["enable_plugins"]
-
-        def convert(self, path: str):
-            captured["paths"].append(path)
-            return types.SimpleNamespace(text_content="fallback markdown")
-
-    class FakePaddleProvider:
-        def convert_pdf_to_markdown(self, path: Path) -> str:
-            raise RuntimeError("ocr crashed")
-
-        def extract_embedded_image_markdown(self, path: Path) -> str:
-            raise AssertionError("should not run for pdf")
-
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown",
-        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
-    )
-    monkeypatch.setattr(
-        "lmit.converters.markitdown_adapter._build_paddleocr_provider",
-        lambda cfg: FakePaddleProvider(),
-    )
-
-    logs: list[str] = []
-    adapter = MarkItDownAdapter(
-        enable_plugins=True,
-        ocr_config=OcrConfig(provider="paddleocr"),
-        log=logs.append,
-    )
-
-    result = adapter.convert_path(tmp_path / "scan.pdf")
-
-    assert "[PADDLEOCR_PDF_FALLBACK]" in result
-    assert "fallback markdown" in result
-    assert any("[OCR-PROVIDER] provider=paddleocr" in line for line in logs)
-    assert any("fallback=markitdown" in line for line in logs)
-
-
-def test_markitdown_adapter_logs_selected_paddle_profile(monkeypatch, tmp_path: Path):
-    class FakeMarkItDown:
-        def __init__(self, **kwargs):
-            return None
-
-        def convert(self, path: str):
-            return types.SimpleNamespace(text_content="fallback markdown")
-
-    class FakePaddleProvider:
-        profile_name = "vision"
-
-        def convert_pdf_to_markdown(self, path: Path) -> str:
-            return "vision markdown"
-
-        def extract_embedded_image_markdown(self, path: Path) -> str:
-            raise AssertionError("should not run for pdf")
-
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown",
-        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
-    )
-    monkeypatch.setattr(
-        "lmit.converters.markitdown_adapter._build_paddleocr_provider",
-        lambda cfg: FakePaddleProvider(),
-    )
-
-    logs: list[str] = []
-    adapter = MarkItDownAdapter(
-        enable_plugins=True,
-        ocr_config=OcrConfig(provider="paddleocr", paddle_profile="vision"),
-        log=logs.append,
-    )
-
-    result = adapter.convert_path(tmp_path / "scan.pdf")
-
-    assert result == "vision markdown"
-    assert any("profile=vision" in line for line in logs)
-    assert any("[OCR-DEVICE]" in line for line in logs)
-
-
-def test_markitdown_adapter_keeps_standalone_images_on_markitdown_path_when_paddleocr_enabled(
-    monkeypatch,
-    tmp_path: Path,
-):
-    captured: dict[str, object] = {"paths": []}
-
-    class FakeMarkItDown:
-        def __init__(self, **kwargs):
-            return None
-
-        def convert(self, path: str):
-            captured["paths"].append(path)
-            return types.SimpleNamespace(text_content="image markdown")
-
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown",
-        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
-    )
-    monkeypatch.setattr(
-        "lmit.converters.markitdown_adapter._build_paddleocr_provider",
-        lambda cfg: object(),
-    )
-
-    adapter = MarkItDownAdapter(
-        enable_plugins=True,
-        ocr_config=OcrConfig(provider="paddleocr"),
-    )
-
-    result = adapter.convert_path(tmp_path / "photo.png")
-
-    assert result == "image markdown"
-    assert captured["paths"] == [str(tmp_path / "photo.png")]
-
-
-def test_markitdown_adapter_appends_embedded_image_ocr_for_office_docs(
-    monkeypatch,
-    tmp_path: Path,
-):
-    captured: dict[str, object] = {"paths": []}
-
-    class FakeMarkItDown:
-        def __init__(self, **kwargs):
-            return None
-
-        def convert(self, path: str):
-            captured["paths"].append(path)
-            return types.SimpleNamespace(text_content="base markdown")
-
-    class FakePaddleProvider:
-        def convert_pdf_to_markdown(self, path: Path) -> str:
-            raise AssertionError("should not run for docx")
-
-        def extract_embedded_image_markdown(self, path: Path) -> str:
-            return "## OCR from Embedded Images\n\nembedded text"
-
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown",
-        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
-    )
-    monkeypatch.setattr(
-        "lmit.converters.markitdown_adapter._build_paddleocr_provider",
-        lambda cfg: FakePaddleProvider(),
-    )
-
-    logs: list[str] = []
-    adapter = MarkItDownAdapter(
-        enable_plugins=True,
-        ocr_config=OcrConfig(provider="paddleocr"),
-        log=logs.append,
-    )
-
-    result = adapter.convert_path(tmp_path / "slides.pptx")
-
-    assert result.startswith("base markdown")
-    assert "## OCR from Embedded Images" in result
-    assert "embedded text" in result
-    assert captured["paths"] == [str(tmp_path / "slides.pptx")]
-    assert any("status=appended" in line for line in logs)
 
 
 def test_build_markitdown_llm_runtime_supports_lm_studio_without_api_key(monkeypatch):

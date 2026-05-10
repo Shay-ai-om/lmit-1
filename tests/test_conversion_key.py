@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from lmit.config import MarkItDownConfig, OcrConfig, PublicFetchConfig, default_config
+from lmit.config import MarkItDownConfig, PublicFetchConfig, default_config
 from lmit.conversion_key import conversion_key
 
 
@@ -94,44 +94,3 @@ def test_conversion_key_changes_when_markitdown_llm_changes(tmp_path):
     )
 
     assert conversion_key(cfg) != conversion_key(llm_cfg)
-
-
-def test_conversion_key_changes_when_ocr_provider_changes(tmp_path):
-    cfg = default_config(cwd=tmp_path)
-    paddle_cfg = replace(
-        cfg,
-        ocr=OcrConfig(
-            provider="paddleocr",
-            paddle_lang="ch",
-            paddle_use_angle_cls=True,
-            paddle_pdf_render_dpi=200,
-        ),
-    )
-
-    assert conversion_key(cfg) != conversion_key(paddle_cfg)
-
-
-def test_conversion_key_changes_when_paddle_profile_changes(tmp_path):
-    cfg = default_config(cwd=tmp_path)
-    structure_cfg = replace(
-        cfg,
-        ocr=replace(cfg.ocr, provider="paddleocr", paddle_profile="pp_structure"),
-    )
-
-    assert conversion_key(cfg) != conversion_key(structure_cfg)
-
-
-def test_conversion_key_changes_when_paddle_device_acceleration_changes(tmp_path):
-    cfg = default_config(cwd=tmp_path)
-    gpu_cfg = replace(
-        cfg,
-        ocr=replace(
-            cfg.ocr,
-            provider="paddleocr",
-            paddle_device="gpu:0",
-            paddle_enable_hpi=True,
-            paddle_precision="fp16",
-        ),
-    )
-
-    assert conversion_key(cfg) != conversion_key(gpu_cfg)

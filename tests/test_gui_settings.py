@@ -23,11 +23,6 @@ def test_gui_settings_round_trip(tmp_path: Path):
         stable_seconds=7,
         fetch_urls=True,
         enable_markitdown_plugins=True,
-        enable_paddleocr=True,
-        paddle_profile="vision",
-        enable_paddle_gpu=True,
-        paddle_device="gpu:1",
-        enable_paddle_hpi=True,
         image_llm_enabled=True,
         image_llm_provider="openai_compatible",
         image_llm_base_url="https://api.openai.com/v1",
@@ -50,11 +45,6 @@ def test_gui_settings_round_trip(tmp_path: Path):
     assert loaded.input_dirs == settings.input_dirs
     assert loaded.interval_seconds == 45
     assert loaded.public_fetch_mode == "legacy"
-    assert loaded.enable_paddleocr is True
-    assert loaded.paddle_profile == "vision"
-    assert loaded.enable_paddle_gpu is True
-    assert loaded.paddle_device == "gpu:1"
-    assert loaded.enable_paddle_hpi is True
     assert loaded.image_llm_enabled is True
     assert loaded.image_llm_provider == "openai_compatible"
     assert loaded.image_llm_model == "gpt-4.1-mini"
@@ -75,11 +65,6 @@ def test_build_app_config_from_gui_applies_raw_pipeline_overrides(tmp_path: Path
         stable_seconds=5,
         fetch_urls=False,
         enable_markitdown_plugins=False,
-        enable_paddleocr=True,
-        paddle_profile="pp_structure",
-        enable_paddle_gpu=True,
-        paddle_device="auto",
-        enable_paddle_hpi=True,
         image_llm_enabled=True,
         image_llm_provider="gemini",
         image_llm_base_url="https://generativelanguage.googleapis.com/v1beta",
@@ -103,10 +88,6 @@ def test_build_app_config_from_gui_applies_raw_pipeline_overrides(tmp_path: Path
     assert cfg.public_fetch.provider == "legacy"
     assert cfg.conversion.fetch_urls is False
     assert cfg.conversion.enable_markitdown_plugins is False
-    assert cfg.ocr.provider == "paddleocr"
-    assert cfg.ocr.paddle_profile == "pp_structure"
-    assert cfg.ocr.paddle_device == "auto"
-    assert cfg.ocr.paddle_enable_hpi is True
     assert cfg.markitdown.llm_enabled is True
     assert cfg.markitdown.llm_provider == "gemini"
     assert cfg.markitdown.llm_base_url == "https://generativelanguage.googleapis.com/v1beta"
@@ -141,11 +122,6 @@ def test_gui_settings_round_trip_preserves_blank_local_llm_api_env(tmp_path: Pat
         stable_seconds=5,
         fetch_urls=True,
         enable_markitdown_plugins=True,
-        enable_paddleocr=False,
-        paddle_profile="pp_ocr",
-        enable_paddle_gpu=False,
-        paddle_device="auto",
-        enable_paddle_hpi=False,
         image_llm_enabled=True,
         image_llm_provider="ollama",
         image_llm_base_url="",
@@ -164,43 +140,3 @@ def test_gui_settings_round_trip_preserves_blank_local_llm_api_env(tmp_path: Pat
 
     assert loaded.image_llm_provider == "ollama"
     assert loaded.image_llm_api_key_env == ""
-
-
-def test_build_app_config_from_gui_disables_paddleocr_when_checkbox_is_off(tmp_path: Path):
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    settings = GuiSettings(
-        config_path=None,
-        input_dirs=[str(input_dir)],
-        output_dir=str(tmp_path / "output" / "raw"),
-        work_dir=str(tmp_path / "work"),
-        report_dir=str(tmp_path / "reports"),
-        public_fetch_mode="auto",
-        interval_seconds=30,
-        stable_seconds=5,
-        fetch_urls=True,
-        enable_markitdown_plugins=True,
-        enable_paddleocr=False,
-        paddle_profile="vision",
-        enable_paddle_gpu=False,
-        paddle_device="gpu:0",
-        enable_paddle_hpi=True,
-        image_llm_enabled=True,
-        image_llm_provider="openai_compatible",
-        image_llm_base_url="https://api.openai.com/v1",
-        image_llm_model="gpt-4.1-mini",
-        image_llm_api_key_env="OPENAI_API_KEY",
-        image_llm_prompt="Describe this image for Markdown.",
-        skip_unchanged=True,
-        overwrite=False,
-        enrich_filenames=False,
-        start_monitor_on_launch=False,
-        autostart=False,
-    )
-
-    cfg = build_app_config_from_gui(settings, tmp_path)
-
-    assert cfg.ocr.provider == "llm"
-    assert cfg.ocr.paddle_profile == "vision"
-    assert cfg.ocr.paddle_device == "cpu"
-    assert cfg.ocr.paddle_enable_hpi is True

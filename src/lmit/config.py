@@ -114,26 +114,6 @@ class MarkItDownConfig:
 
 
 @dataclass(frozen=True)
-class OcrConfig:
-    provider: str = "llm"
-    paddle_profile: str = "pp_ocr"
-    paddle_lang: str = "ch"
-    paddle_device: str = "auto"
-    paddle_enable_hpi: bool = False
-    paddle_use_tensorrt: bool = False
-    paddle_precision: str = "fp32"
-    paddle_cpu_threads: int = 8
-    paddle_use_angle_cls: bool = True
-    paddle_pdf_render_dpi: int = 200
-    paddle_structure_use_doc_orientation_classify: bool = True
-    paddle_structure_use_chart_recognition: bool = True
-    paddle_structure_merge_layout_blocks: bool = True
-    paddle_vision_use_doc_preprocessor: bool = True
-    paddle_vision_format_block_content: bool = True
-    paddle_vision_merge_layout_blocks: bool = True
-
-
-@dataclass(frozen=True)
 class PollingConfig:
     enabled: bool
     interval_seconds: int
@@ -203,7 +183,6 @@ class AppConfig:
     conversion: ConversionConfig
     public_fetch: PublicFetchConfig
     markitdown: MarkItDownConfig
-    ocr: OcrConfig
     polling: PollingConfig
     output_naming: OutputNamingConfig
     wiki: WikiConfig
@@ -239,7 +218,6 @@ def default_config(cwd: Path | None = None) -> AppConfig:
         ),
         public_fetch=PublicFetchConfig(),
         markitdown=MarkItDownConfig(),
-        ocr=OcrConfig(),
         polling=PollingConfig(enabled=False, interval_seconds=300, stable_seconds=10),
         output_naming=OutputNamingConfig(
             enrich_filenames=False,
@@ -466,88 +444,6 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         llm_prompt=_optional_string(markitdown_data.get("llm_prompt", cfg.markitdown.llm_prompt)),
     )
 
-    ocr_data = data.get("ocr", {})
-    ocr = OcrConfig(
-        provider=_normalize_ocr_provider(ocr_data.get("provider"), cfg.ocr.provider),
-        paddle_profile=_normalize_paddle_profile(
-            ocr_data.get("paddle_profile"),
-            cfg.ocr.paddle_profile,
-        ),
-        paddle_lang=str(ocr_data.get("paddle_lang", cfg.ocr.paddle_lang)).strip()
-        or cfg.ocr.paddle_lang,
-        paddle_device=_normalize_paddle_device(
-            ocr_data.get("paddle_device"),
-            cfg.ocr.paddle_device,
-        ),
-        paddle_enable_hpi=bool(
-            ocr_data.get("paddle_enable_hpi", cfg.ocr.paddle_enable_hpi)
-        ),
-        paddle_use_tensorrt=bool(
-            ocr_data.get("paddle_use_tensorrt", cfg.ocr.paddle_use_tensorrt)
-        ),
-        paddle_precision=_normalize_paddle_precision(
-            ocr_data.get("paddle_precision"),
-            cfg.ocr.paddle_precision,
-        ),
-        paddle_cpu_threads=max(
-            1,
-            int(
-                ocr_data.get(
-                    "paddle_cpu_threads",
-                    cfg.ocr.paddle_cpu_threads,
-                )
-            ),
-        ),
-        paddle_use_angle_cls=bool(
-            ocr_data.get("paddle_use_angle_cls", cfg.ocr.paddle_use_angle_cls)
-        ),
-        paddle_pdf_render_dpi=max(
-            72,
-            int(
-                ocr_data.get(
-                    "paddle_pdf_render_dpi",
-                    cfg.ocr.paddle_pdf_render_dpi,
-                )
-            ),
-        ),
-        paddle_structure_use_doc_orientation_classify=bool(
-            ocr_data.get(
-                "paddle_structure_use_doc_orientation_classify",
-                cfg.ocr.paddle_structure_use_doc_orientation_classify,
-            )
-        ),
-        paddle_structure_use_chart_recognition=bool(
-            ocr_data.get(
-                "paddle_structure_use_chart_recognition",
-                cfg.ocr.paddle_structure_use_chart_recognition,
-            )
-        ),
-        paddle_structure_merge_layout_blocks=bool(
-            ocr_data.get(
-                "paddle_structure_merge_layout_blocks",
-                cfg.ocr.paddle_structure_merge_layout_blocks,
-            )
-        ),
-        paddle_vision_use_doc_preprocessor=bool(
-            ocr_data.get(
-                "paddle_vision_use_doc_preprocessor",
-                cfg.ocr.paddle_vision_use_doc_preprocessor,
-            )
-        ),
-        paddle_vision_format_block_content=bool(
-            ocr_data.get(
-                "paddle_vision_format_block_content",
-                cfg.ocr.paddle_vision_format_block_content,
-            )
-        ),
-        paddle_vision_merge_layout_blocks=bool(
-            ocr_data.get(
-                "paddle_vision_merge_layout_blocks",
-                cfg.ocr.paddle_vision_merge_layout_blocks,
-            )
-        ),
-    )
-
     polling_data = data.get("polling", {})
     polling = PollingConfig(
         enabled=bool(polling_data.get("enabled", cfg.polling.enabled)),
@@ -651,7 +547,6 @@ def load_config(path: Path | None = None, cwd: Path | None = None) -> AppConfig:
         conversion=conversion,
         public_fetch=public_fetch,
         markitdown=markitdown,
-        ocr=ocr,
         polling=polling,
         output_naming=output_naming,
         wiki=wiki,
@@ -805,31 +700,3 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _normalize_ocr_provider(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if text in {"llm", "paddleocr"}:
-        return text
-    return str(fallback).strip().lower() or "llm"
-
-
-def _normalize_paddle_profile(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if text in {"pp_ocr", "pp_structure", "vision"}:
-        return text
-    return str(fallback).strip().lower() or "pp_ocr"
-
-
-def _normalize_paddle_device(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if not text:
-        return str(fallback).strip().lower() or "auto"
-    return text
-
-
-def _normalize_paddle_precision(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    if text in {"fp32", "fp16"}:
-        return text
-    return str(fallback).strip().lower() or "fp32"

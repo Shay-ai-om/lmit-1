@@ -22,12 +22,6 @@ full = [
 scrapling = [
   "scrapling[fetchers]>=0.4.7",
 ]
-paddleocr = [
-  "paddleocr",
-  "paddlex",
-  "pypdfium2",
-  "Pillow",
-]
 session = [
   "playwright>=1.51",
 ]
