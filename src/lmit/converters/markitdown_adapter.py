@@ -13,6 +13,7 @@ from lmit.converters.markitdown_llm import (
 
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
+DEFAULT_PLUGIN_LLM_TIMEOUT_SECONDS = 180.0
 ACCEPT_HEADER = "text/markdown, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1"
 
 
@@ -67,7 +68,10 @@ class MarkItDownAdapter:
         plugin_llm_runtime = build_markitdown_plugin_llm_runtime(
             llm_config or MarkItDownConfig(),
             session=session,
-            timeout_seconds=request_timeout_seconds,
+            timeout_seconds=max(
+                float(request_timeout_seconds),
+                DEFAULT_PLUGIN_LLM_TIMEOUT_SECONDS,
+            ),
         )
         self._image_llm_runtime_enabled = image_llm_runtime is not None
         self._plugin_llm_runtime_enabled = plugin_llm_runtime is not None

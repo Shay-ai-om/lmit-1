@@ -10,6 +10,7 @@ import requests
 
 from lmit.config import MarkItDownConfig
 from lmit.converters.markitdown_adapter import (
+    DEFAULT_PLUGIN_LLM_TIMEOUT_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     MarkItDownAdapter,
     build_requests_session,
@@ -65,6 +66,42 @@ def test_markitdown_adapter_passes_timeout_session(monkeypatch):
     assert captured["enable_plugins"] is False
     assert isinstance(session, requests.Session)
     assert session.headers["Accept"].startswith("text/markdown")
+
+
+def test_markitdown_adapter_uses_longer_timeout_for_plugin_llm(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+
+    def fake_build_markitdown_llm_runtime(cfg, *, session, timeout_seconds):
+        captured["image_timeout"] = timeout_seconds
+        return None
+
+    def fake_build_markitdown_plugin_llm_runtime(cfg, *, session, timeout_seconds):
+        captured["plugin_timeout"] = timeout_seconds
+        return None
+
+    monkeypatch.setattr(
+        "lmit.converters.markitdown_adapter.build_markitdown_llm_runtime",
+        fake_build_markitdown_llm_runtime,
+    )
+    monkeypatch.setattr(
+        "lmit.converters.markitdown_adapter.build_markitdown_plugin_llm_runtime",
+        fake_build_markitdown_plugin_llm_runtime,
+    )
+
+    MarkItDownAdapter(enable_plugins=True, request_timeout_seconds=30.0)
+
+    assert captured["image_timeout"] == 30.0
+    assert captured["plugin_timeout"] == DEFAULT_PLUGIN_LLM_TIMEOUT_SECONDS
 
 
 def test_markitdown_adapter_passes_llm_configuration(monkeypatch):
