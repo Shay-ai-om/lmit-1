@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
+import io
 from types import SimpleNamespace
 from typing import Any
 import os
 import re
+import time
 
 import requests
 
@@ -15,6 +18,10 @@ DEFAULT_OPENAI_COMPATIBLE_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/api"
+DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE = 1600
+DEFAULT_PLUGIN_OCR_MAX_BYTES = 1_500_000
+DEFAULT_PLUGIN_OCR_SLOW_EMPTY_SECONDS = 15.0
+DEFAULT_PLUGIN_OCR_EMPTY_LIMIT = 2
 
 _DATA_URL_PATTERN = re.compile(
     r"^data:(?P<mime>[^;]+);base64,(?P<data>[A-Za-z0-9+/=\s]+)$",
@@ -196,13 +203,20 @@ def build_markitdown_plugin_llm_runtime(
     session: requests.Session,
     timeout_seconds: float,
 ) -> MarkItDownLlmRuntime | None:
-    return _build_markitdown_llm_runtime(
+    runtime = _build_markitdown_llm_runtime(
         cfg,
         session=session,
         timeout_seconds=timeout_seconds,
         require_enabled=False,
         include_prompt=False,
         fail_if_incomplete=False,
+    )
+    if runtime is None:
+        return None
+    return MarkItDownLlmRuntime(
+        client=_PluginOcrClientWrapper(runtime.client),
+        model=runtime.model,
+        prompt=runtime.prompt,
     )
 
 
@@ -503,3 +517,142 @@ def _ollama_chat_url(base_url: str) -> str:
     if normalized.endswith("/api"):
         return normalized + "/chat"
     return normalized + "/api/chat"
+
+
+class _PluginOcrClientWrapper:
+    def __init__(self, base_client: object):
+        self._base_client = base_client
+        self._slow_empty_count = 0
+        self._disabled_reason: str | None = None
+        self.chat = _PluginOcrChatWrapper(self)
+
+    def _create(self, *, model: str, messages: list[dict[str, Any]]):
+        if self._disabled_reason is not None:
+            raise RuntimeError(self._disabled_reason)
+
+        prepared_messages = _prepare_plugin_ocr_messages(messages)
+        start = time.monotonic()
+        response = self._base_client.chat.completions.create(
+            model=model,
+            messages=prepared_messages,
+        )
+        duration = time.monotonic() - start
+        content = _safe_response_content(response)
+        if not content.strip() and duration >= DEFAULT_PLUGIN_OCR_SLOW_EMPTY_SECONDS:
+            self._slow_empty_count += 1
+            if self._slow_empty_count >= DEFAULT_PLUGIN_OCR_EMPTY_LIMIT:
+                self._disabled_reason = (
+                    "OCR LLM returned repeated slow empty responses; disabling "
+                    "further OCR calls for this conversion."
+                )
+        else:
+            self._slow_empty_count = 0
+        return response
+
+
+class _PluginOcrChatWrapper:
+    def __init__(self, parent: _PluginOcrClientWrapper):
+        self.completions = _PluginOcrCompletionsWrapper(parent)
+
+
+class _PluginOcrCompletionsWrapper:
+    def __init__(self, parent: _PluginOcrClientWrapper):
+        self._parent = parent
+
+    def create(self, *, model: str, messages: list[dict[str, Any]]):
+        return self._parent._create(model=model, messages=messages)
+
+
+def _prepare_plugin_ocr_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    prepared: list[dict[str, Any]] = []
+    for message in messages:
+        cloned = dict(message)
+        content = message.get("content")
+        if not isinstance(content, list):
+            prepared.append(cloned)
+            continue
+        prepared_content: list[dict[str, Any]] = []
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "image_url":
+                prepared_content.append(item)
+                continue
+            image_url_value = item.get("image_url")
+            if isinstance(image_url_value, dict):
+                raw_url = image_url_value.get("url")
+            else:
+                raw_url = image_url_value
+            if not isinstance(raw_url, str):
+                prepared_content.append(item)
+                continue
+            prepared_content.append(
+                {
+                    **item,
+                    "image_url": {
+                        "url": _prepare_plugin_ocr_data_url(raw_url),
+                    },
+                }
+            )
+        cloned["content"] = prepared_content
+        prepared.append(cloned)
+    return prepared
+
+
+def _prepare_plugin_ocr_data_url(url: str) -> str:
+    match = _DATA_URL_PATTERN.match(url.strip())
+    if not match:
+        return url
+    mime_type = match.group("mime").strip()
+    payload = "".join(match.group("data").split())
+    try:
+        raw = base64.b64decode(payload)
+    except Exception:
+        return url
+    prepared_mime_type, prepared_bytes = _prepare_plugin_ocr_image_bytes(mime_type, raw)
+    encoded = base64.b64encode(prepared_bytes).decode("utf-8")
+    return f"data:{prepared_mime_type};base64,{encoded}"
+
+
+def _prepare_plugin_ocr_image_bytes(mime_type: str, raw: bytes) -> tuple[str, bytes]:
+    if (
+        len(raw) <= DEFAULT_PLUGIN_OCR_MAX_BYTES
+        and mime_type.lower() in {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    ):
+        try:
+            from PIL import Image
+
+            with Image.open(io.BytesIO(raw)) as image:
+                width, height = image.size
+                if max(width, height) <= DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE:
+                    return mime_type, raw
+        except Exception:
+            return mime_type, raw
+
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(raw)) as image:
+            converted = image.convert("RGB") if image.mode not in {"RGB", "L"} else image.copy()
+            converted.thumbnail(
+                (DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE, DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE),
+                Image.Resampling.LANCZOS,
+            )
+
+            png_buffer = io.BytesIO()
+            converted.save(png_buffer, format="PNG", optimize=True)
+            png_bytes = png_buffer.getvalue()
+            if len(png_bytes) <= DEFAULT_PLUGIN_OCR_MAX_BYTES:
+                return "image/png", png_bytes
+
+            jpeg_ready = converted.convert("RGB") if converted.mode != "RGB" else converted
+            jpeg_buffer = io.BytesIO()
+            jpeg_ready.save(jpeg_buffer, format="JPEG", quality=85, optimize=True)
+            return "image/jpeg", jpeg_buffer.getvalue()
+    except Exception:
+        return mime_type, raw
+
+
+def _safe_response_content(response: Any) -> str:
+    try:
+        return str(response.choices[0].message.content or "")
+    except Exception:
+        return ""

@@ -4,7 +4,10 @@ from pathlib import Path
 import json
 import sys
 import types
+import base64
+import io
 
+from PIL import Image
 import pytest
 import requests
 
@@ -19,6 +22,9 @@ from lmit.converters.markitdown_llm import (
     DEFAULT_GEMINI_BASE_URL,
     DEFAULT_LM_STUDIO_BASE_URL,
     DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE,
+    _PluginOcrClientWrapper,
+    _prepare_plugin_ocr_data_url,
     build_markitdown_llm_runtime,
     build_markitdown_plugin_llm_runtime,
 )
@@ -243,6 +249,49 @@ def test_build_markitdown_plugin_llm_runtime_does_not_require_image_llm_enabled(
     assert runtime is not None
     assert runtime.model == "gpt-4.1-mini"
     assert runtime.prompt is None
+
+
+def test_prepare_plugin_ocr_data_url_downscales_large_image():
+    image = Image.new("RGB", (5000, 3000), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    raw = buffer.getvalue()
+    url = "data:image/png;base64," + base64.b64encode(raw).decode("utf-8")
+
+    prepared = _prepare_plugin_ocr_data_url(url)
+
+    assert prepared.startswith("data:image/")
+    payload = prepared.split(",", 1)[1]
+    prepared_bytes = base64.b64decode(payload)
+    with Image.open(io.BytesIO(prepared_bytes)) as processed:
+        assert max(processed.size) <= DEFAULT_PLUGIN_OCR_MAX_IMAGE_EDGE
+
+
+def test_plugin_ocr_client_wrapper_disables_after_repeated_slow_empty_responses(monkeypatch):
+    class FakeBaseCompletions:
+        def __init__(self):
+            self.calls = 0
+
+        def create(self, *, model: str, messages: list[dict[str, object]]):
+            self.calls += 1
+            return types.SimpleNamespace(
+                choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=""))]
+            )
+
+    base = types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=FakeBaseCompletions())
+    )
+    wrapper = _PluginOcrClientWrapper(base)
+    moments = iter([0.0, 16.0, 20.0, 36.5])
+    monkeypatch.setattr(
+        "lmit.converters.markitdown_llm.time.monotonic",
+        lambda: next(moments),
+    )
+
+    wrapper.chat.completions.create(model="m", messages=[])
+    wrapper.chat.completions.create(model="m", messages=[])
+    with pytest.raises(RuntimeError, match="disabling further OCR calls"):
+        wrapper.chat.completions.create(model="m", messages=[])
 
 
 def test_build_markitdown_llm_runtime_requires_api_key_env(monkeypatch):
