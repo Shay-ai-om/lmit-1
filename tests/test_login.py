@@ -44,7 +44,7 @@ def test_browser_launch_options_include_channel_when_configured(tmp_path: Path):
     assert browser_launch_options(site, headless=False) == {
         "headless": False,
         "ignore_default_args": ["--enable-automation"],
-        "args": ["--disable-blink-features=AutomationControlled"],
+        "args": ["--disable-blink-features=AutomationControlled", "--mute-audio"],
         "channel": "msedge",
     }
 

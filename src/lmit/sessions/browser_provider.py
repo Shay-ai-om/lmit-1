@@ -192,13 +192,21 @@ class PlaywrightBrowserProvider:
                         final_url=final_url,
                     )
                 finally:
-                    if not reuse_existing_page:
+                    if reuse_existing_page:
+                        self._close_page(page)
+                    else:
                         page.close()
             finally:
                 try:
                     browser.disconnect()
                 except AttributeError:
                     pass
+
+    def _close_page(self, page) -> None:
+        try:
+            page.close()
+        except Exception as exc:  # pragma: no cover - defensive against browser disconnect races
+            self.report.log(f"[WARN] unable to close session browser page: {exc!r}")
 
     def _ensure_cdp_browser(
         self,
@@ -229,8 +237,9 @@ class PlaywrightBrowserProvider:
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-popup-blocking",
+                "--mute-audio",
                 "--new-window",
-                target_url,
+                "about:blank",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

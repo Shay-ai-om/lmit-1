@@ -202,11 +202,13 @@ def test_playwright_provider_launches_cdp_profile_when_endpoint_missing(
     assert str(executable) == popen_args[0]
     assert "--remote-debugging-port=9444" in popen_args
     assert f"--user-data-dir={tmp_path / 'reddit_profile'}" in popen_args
-    assert "https://www.reddit.com/r/LocalLLaMA/s/abc" in popen_args
+    assert "--mute-audio" in popen_args
+    assert "about:blank" in popen_args
+    assert "https://www.reddit.com/r/LocalLLaMA/s/abc" not in popen_args
     assert any("[SESSION-BROWSER-LAUNCH]" in line for line in report.lines)
 
 
-def test_cdp_fetch_reuses_launched_page_instead_of_opening_second_window(
+def test_cdp_fetch_closes_reused_launched_page_after_extraction(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -315,7 +317,7 @@ def test_cdp_fetch_reuses_launched_page_instead_of_opening_second_window(
     assert result.markdown == "markdown:https://www.youtube.com/watch?v=abc"
     assert context.new_page_calls == 0
     assert launched_page.goto_calls
-    assert launched_page.close_calls == 0
+    assert launched_page.close_calls == 1
     assert browser.disconnected is True
 
 

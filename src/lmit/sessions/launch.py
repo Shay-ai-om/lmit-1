@@ -38,7 +38,7 @@ def generic_browser_launch_options(
     options = {
         "headless": headless,
         "ignore_default_args": ["--enable-automation"],
-        "args": ["--disable-blink-features=AutomationControlled"],
+        "args": ["--disable-blink-features=AutomationControlled", "--mute-audio"],
     }
     if channel:
         options["channel"] = channel

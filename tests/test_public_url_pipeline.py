@@ -380,7 +380,9 @@ def test_public_cdp_auto_launch_starts_browser_when_endpoint_is_missing(
     assert str(executable) == popen_args[0]
     assert "--remote-debugging-port=9333" in popen_args
     assert f"--user-data-dir={tmp_path / 'profile'}" in popen_args
-    assert "https://tieba.baidu.com/p/9152102978" in popen_args
+    assert "--mute-audio" in popen_args
+    assert "about:blank" in popen_args
+    assert "https://tieba.baidu.com/p/9152102978" not in popen_args
     assert any("[PUBLIC-BROWSER-LAUNCH]" in line for line in report.lines)
 
 
