@@ -51,6 +51,29 @@ WINDOWS_RESERVED_NAMES = {
     *(f"lpt{index}" for index in range(1, 10)),
 }
 
+FACEBOOK_POST_MARKER_RE = re.compile(r"^(?P<author>.+?)\s*\u7684\u8cbc\u6587$")
+FACEBOOK_UI_LINES = {
+    "讚",
+    "留言",
+    "分享",
+    "回覆",
+    "更多",
+    "查看更多",
+    "顯示更多",
+    "所有心情",
+    "最相關",
+    "facebook",
+}
+FACEBOOK_TIME_RE = re.compile(
+    r"^(?:"
+    r"剛剛|昨天(?:\s+\d{1,2}:\d{2})?|"
+    r"\d+\s*(?:秒|分鐘|小時|天|週|周|個月|年)(?:前)?|"
+    r"\d{1,2}月\d{1,2}日(?:\s+\d{1,2}:\d{2})?|"
+    r"\d{4}年\d{1,2}月\d{1,2}日(?:\s+\d{1,2}:\d{2})?|"
+    r"(?:上午|下午)\s*\d{1,2}:\d{2}"
+    r")$"
+)
+
 
 def enriched_output_path(
     base_output_path: Path,
@@ -79,6 +102,8 @@ def filename_prefix(markdown: str, cfg: OutputNamingConfig) -> str | None:
         source = "auto"
 
     candidates: list[str | None] = []
+    if source == "auto":
+        candidates.append(_facebook_post_prefix(markdown))
     if source in {"auto", "heading"}:
         candidates.append(_first_heading(markdown))
     if source in {"auto", "excerpt"}:
@@ -89,6 +114,65 @@ def filename_prefix(markdown: str, cfg: OutputNamingConfig) -> str | None:
         if cleaned:
             return cleaned
     return None
+
+
+def _facebook_post_prefix(markdown: str) -> str | None:
+    if not _looks_like_facebook_markdown(markdown):
+        return None
+
+    lines = markdown.splitlines()
+    for index, line in enumerate(lines):
+        stripped = _strip_markdown_inline(line.strip())
+        match = FACEBOOK_POST_MARKER_RE.fullmatch(stripped)
+        if match is None:
+            continue
+        author = match.group("author").strip()
+        if not author or _is_noisy_candidate(author):
+            continue
+        excerpt = _first_facebook_post_content_line(lines[index + 1 :], author=author)
+        if excerpt:
+            return f"{author} {excerpt}"
+    return None
+
+
+def _looks_like_facebook_markdown(markdown: str) -> bool:
+    lowered = markdown.casefold()
+    return "facebook.com" in lowered or any(
+        FACEBOOK_POST_MARKER_RE.fullmatch(line.strip())
+        for line in markdown.splitlines()
+    )
+
+
+def _first_facebook_post_content_line(lines: list[str], *, author: str) -> str | None:
+    for line in lines:
+        stripped = _strip_markdown_inline(line.strip())
+        if not stripped:
+            continue
+        if _is_facebook_post_noise_line(stripped, author=author):
+            continue
+        return stripped
+    return None
+
+
+def _is_facebook_post_noise_line(value: str, *, author: str) -> bool:
+    lowered = value.casefold().strip()
+    if lowered in {item.casefold() for item in FACEBOOK_UI_LINES}:
+        return True
+    if lowered == author.casefold().strip():
+        return True
+    if _is_noisy_candidate(value):
+        return True
+    if lowered.startswith(("fetched url:", "final url:", "source url:")):
+        return True
+    if value.startswith("#"):
+        return True
+    if value.startswith("http://") or value.startswith("https://"):
+        return True
+    if value.startswith("[") and value.endswith("]"):
+        return True
+    if FACEBOOK_TIME_RE.fullmatch(value):
+        return True
+    return False
 
 
 def _first_heading(markdown: str) -> str | None:
@@ -157,7 +241,7 @@ def _strip_markdown_inline(value: str) -> str:
 
 
 def _limit_filename(filename: str, prefix: str, original_name: str, separator: str) -> str:
-    max_filename_chars = 60
+    max_filename_chars = 120
     if len(filename) <= max_filename_chars:
         return filename
     available = max_filename_chars - len(separator) - len(original_name)

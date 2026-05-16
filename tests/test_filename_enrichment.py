@@ -105,6 +105,30 @@ def test_filename_prefix_skips_bare_facebook_heading():
     assert filename_prefix(markdown, _cfg()) == "鍾均的貼文"
 
 
+def test_filename_prefix_prefers_facebook_author_and_post_excerpt_over_group_heading():
+    markdown = "\n".join(
+        [
+            "Fetched URL: https://www.facebook.com/groups/lmit/posts/123",
+            "",
+            "Final URL: https://www.facebook.com/groups/lmit/posts/123",
+            "",
+            "# 本地 AI 工具交流社團",
+            "",
+            "王小明的貼文",
+            "昨天 13:20",
+            "大家今天測試 LMIT 的檔名摘要，發現社團名稱太常重複。這段內容才應該放進檔名。",
+            "",
+            "讚",
+            "留言",
+            "分享",
+        ]
+    )
+
+    assert filename_prefix(markdown, _cfg(max_prefix_chars=120)) == (
+        "王小明 大家今天測試 LMIT 的檔名摘要,發現社團名稱太常重複。這段內容才應該放進檔名。"
+    )
+
+
 def test_filename_prefix_skips_angle_bracket_url():
     markdown = "<https://zhuanlan.zhihu.com/p/2002485126714644013>"
 
@@ -121,14 +145,15 @@ def test_enriched_output_path_sanitizes_windows_filename_chars(tmp_path: Path):
     assert path == (output_root / "A Title With Unsafe Chars__note.md").resolve()
 
 
-def test_enriched_output_path_limits_final_filename_length_to_60_chars():
+def test_enriched_output_path_limits_final_filename_length_to_120_chars():
     output_root = Path("output").resolve()
     base = output_root / "very-long-original-name.md"
-    markdown = "# " + ("A" * 120) + "\n\nBody"
+    markdown = "# " + ("A" * 160) + "\n\nBody"
 
-    path = enriched_output_path(base, output_root, markdown, _cfg(max_prefix_chars=120))
+    path = enriched_output_path(base, output_root, markdown, _cfg(max_prefix_chars=160))
 
-    assert len(path.name) <= 60
+    assert len(path.name) > 60
+    assert len(path.name) <= 120
     assert path.name.endswith("__very-long-original-name.md")
 
 
