@@ -87,6 +87,8 @@ def run_convert(
         report.stats.matched_files = len(files)
         report.log(f"retry failed filter: matched={len(files)}/{before}")
 
+    files.sort(key=lambda scanned: _processing_order_key(scanned, manifest))
+
     key = conversion_key(cfg)
     adapter = MarkItDownAdapter(
         enable_plugins=cfg.conversion.enable_markitdown_plugins,
@@ -256,3 +258,8 @@ def run_convert(
     if any("[CANCELLED]" in line for line in report.lines):
         return 130
     return 0 if report.stats.failed == 0 else 1
+
+
+def _processing_order_key(scanned, manifest: Manifest) -> tuple[int, int, str]:
+    is_known = scanned.manifest_key in manifest.records
+    return (1 if is_known else 0, -scanned.mtime_ns, scanned.manifest_key)

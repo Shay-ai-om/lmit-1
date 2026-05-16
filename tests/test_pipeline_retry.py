@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import os
 from pathlib import Path
 
 from lmit.config import PublicFetchConfig, default_config, with_overrides
 from lmit.manifest import Manifest
 from lmit import pipeline
+from lmit.scanner import ScanSummary
 from lmit.pipeline import run_convert
 from lmit.scanner import ScannedFile
 
@@ -133,6 +135,83 @@ def test_run_convert_does_not_mark_unstable_source_missing(tmp_path: Path):
     assert updated.records["syncing.md"].status == "success"
 
 
+def test_run_convert_prioritizes_new_files_then_newer_known_files(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    known_old = input_dir / "known-old.md"
+    known_new = input_dir / "known-new.md"
+    brand_new = input_dir / "brand-new.md"
+    known_old.write_text("old", encoding="utf-8")
+    known_new.write_text("newer", encoding="utf-8")
+    brand_new.write_text("new", encoding="utf-8")
+
+    cfg = _cfg(tmp_path)
+
+    def scanned(path: Path, mtime_ns: int) -> ScannedFile:
+        return ScannedFile(
+            path=path.resolve(),
+            relative_path=Path(path.name),
+            suffix=".md",
+            size=path.stat().st_size,
+            mtime_ns=mtime_ns,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            source_root=input_dir.resolve(),
+        )
+
+    old_item = scanned(known_old, 100)
+    newer_item = scanned(known_new, 300)
+    new_item = scanned(brand_new, 200)
+    output_dir = tmp_path / "output" / "raw"
+    output_dir.mkdir(parents=True)
+    manifest = Manifest(tmp_path / "work" / "manifest.json")
+    key = pipeline.conversion_key(cfg)
+    manifest.update(
+        old_item,
+        output_dir / "known-old.md",
+        status="success",
+        conversion_key=key,
+    )
+    manifest.update(
+        newer_item,
+        output_dir / "known-new.md",
+        status="success",
+        conversion_key=key,
+    )
+    manifest.save()
+
+    summary = ScanSummary(input_roots=1, scanned_items=3, matched_files=3)
+    summary.present_manifest_keys = {
+        old_item.manifest_key,
+        newer_item.manifest_key,
+        new_item.manifest_key,
+    }
+    monkeypatch.setattr(
+        pipeline,
+        "scan_input",
+        lambda cfg: ([old_item, newer_item, new_item], summary),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "convert_regular_file",
+        lambda path, adapter, **kwargs: (path.read_text(encoding="utf-8"), False),
+    )
+
+    code = run_convert(cfg)
+    out = capsys.readouterr().out
+    item_lines = [line for line in out.splitlines() if line.startswith("[ITEM-START]")]
+
+    assert code == 0
+    assert item_lines == [
+        "[ITEM-START] brand-new.md",
+        "[ITEM-START] known-new.md",
+        "[ITEM-START] known-old.md",
+    ]
+
+
 def test_run_convert_skips_unchanged_when_output_was_moved(tmp_path: Path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
@@ -245,8 +324,12 @@ def test_run_convert_logs_missing_markitdown_ocr_plugin(
 def test_run_convert_returns_cancel_code_after_first_item(tmp_path: Path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
-    (input_dir / "a.md").write_text("first", encoding="utf-8")
-    (input_dir / "b.md").write_text("second", encoding="utf-8")
+    first = input_dir / "a.md"
+    second = input_dir / "b.md"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    os.utime(first, ns=(2_000_000_000, 2_000_000_000))
+    os.utime(second, ns=(1_000_000_000, 1_000_000_000))
 
     calls = {"count": 0}
 
@@ -258,5 +341,5 @@ def test_run_convert_returns_cancel_code_after_first_item(tmp_path: Path):
     code = run_convert(_cfg(tmp_path), cancel_check=cancel_check)
 
     assert code == 130
-    assert (tmp_path / "output" / "raw" / "a.md").exists()
-    assert not (tmp_path / "output" / "raw" / "b.md").exists()
+    assert (tmp_path / "output" / "raw" / first.name).exists()
+    assert not (tmp_path / "output" / "raw" / second.name).exists()
